@@ -12,8 +12,10 @@ from textual.containers import Container, Horizontal, Center, Vertical, Vertical
 from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, Placeholder
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
+# The index of the first track.
 START_TRACK: int = 1
 
+# The support file types. @TODO
 TRACK_EXT: tuple[str, ...] = ('.mp3',
                               # '.mp4', '.m4a', '.ogg', '.flac'
                               )
@@ -76,7 +78,7 @@ class MusicPlayerApp(App):
     BINDINGS = [
         ("space", "toggle_play", "Play/Pause"),
         ("backspace", "stop_play", "Stop"),
-        ("enter", "next_track", "Next track"),
+        ("t", "next_track", "Next track"),
         ("m", "toggle_mute", "Mute/Unmute"),
         ("d", "toggle_dark", "Toggle dark mode"),
         ("o", "open_directory", "Open directory"),
@@ -94,6 +96,8 @@ class MusicPlayerApp(App):
     cwd: reactive[str] = reactive('./demo_music')
     # The list of current tracks.
     tracks: reactive[list[tuple]] = reactive([])
+
+    current_track: int = START_TRACK
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -123,7 +127,7 @@ class MusicPlayerApp(App):
         self.playing = not self.playing
         self.sub_title = "|>" if self.playing else "||"
         if self.playing:
-            self.play_track(START_TRACK)
+            self.play_track(self.current_track)
 
     def action_toggle_mute(self) -> None:
         self.mute = not self.mute
@@ -141,6 +145,13 @@ class MusicPlayerApp(App):
 
     def action_open_directory(self) -> None:
         pass
+
+    def action_next_track(self) -> None:
+        self.current_track += 1
+        self.log(f"Track: {self.current_track}")
+        if self.current_track >= len(self.tracks):
+            self.current_track = START_TRACK
+        self.play_track(self.current_track)
 
     def action_scan_track_directory(self) -> None:
         self.scan_track_directory()
@@ -160,7 +171,6 @@ class MusicPlayerApp(App):
         self.tracks = track_data
 
     def play_track(self, track_id: int) -> None:
-        self.log(sys.path)
         self.log(self.tracks[track_id])
         self.stop_track()
 
