@@ -40,5 +40,5 @@ $ textual run --dev music_player.py
 - [ ] clean up the UI (I'm looking at you, footer!)
 - [ ] use `session.yaml` (or something similar maybe) to record session info (current track, position, volume, etc.)
 - [ ] maybe - drag/drop source folder?
-- [ ] maybe - "now playing" with chonky album artwork? (wouldn't that be neat?!)
+- [ ] maybe - "now playing" with [chonky embedded album artwork](https://github.com/darrenburns/rich-pixels)? (wouldn't that be neat?!)
 - [ ] other cool stuff!
