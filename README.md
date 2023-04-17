@@ -1,6 +1,6 @@
 # textual-musicplayer
 
-A simple music player (MP3, etc.) using Textual.
+A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/).
 
 Version 0.0.0.0.0.0.1-prealpha
 
