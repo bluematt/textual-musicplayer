@@ -1,0 +1,42 @@
+Screen {
+    layout: vertical;
+}
+
+TrackInformation {
+    height: 6;
+    border: solid white;
+    content-align: center top;
+}
+
+PlayerControls {
+    height: 3;
+    content-align: center top;
+}
+
+TrackList {
+    height: 1fr;
+    width: 100%;
+}
+
+#track_listing {
+    height: 1fr;
+    width: 100%;
+}
+
+#play {
+}
+
+#pause {
+}
+
+.container {
+    width: auto;
+    height: auto;
+}
+
+.label {
+    height: 3;
+    content-align: right middle;
+    width: auto;
+    padding: 1;
+}

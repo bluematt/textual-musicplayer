@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Project
+demo_music/*
+!demo_music/.gitkeep
