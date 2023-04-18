@@ -138,11 +138,12 @@ class MusicPlayerApp(App):
         self.scan_track_directory()
         self.update_playlist()
 
-        # Focus the playlist and set the current track to be the first track in the playlist.
+        # Focus the playlist
+        self.focus_playlist()
+
+        # Set the current track to be the first track in the playlist.
         # TODO Error handling for empty playlists.
-        playlist: DataTable = self.get_playlist()
-        self.set_focus(playlist)
-        self.current_track = tuple(playlist.get_row_at(0))
+        self.current_track = tuple(self.get_playlist().get_row_at(0))
 
     def update_playlist(self) -> None:
         """Update the playlist with the tracks from the current working directory."""
@@ -238,6 +239,17 @@ class MusicPlayerApp(App):
 
             self.update_track_info(track)
 
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "play_button":
+            self.unpause()
+        if event.button.id == "pause_button":
+            self.pause()
+
+        self.focus_playlist()
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        log(event.switch.id)
+
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handler for selecting a row in the data table."""
         self.current_track = tuple(event.data_table.get_row_at(event.cursor_row))
@@ -245,6 +257,10 @@ class MusicPlayerApp(App):
     def get_playlist(self) -> DataTable:
         """Return the playlist widget."""
         return self.query_one("#playlist", DataTable)
+
+    def focus_playlist(self) -> None:
+        self.set_focus(self.get_playlist())
+
 
 
 if __name__ == "__main__":
