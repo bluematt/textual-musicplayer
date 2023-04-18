@@ -88,12 +88,12 @@ class PlayerControls(Static):
             Button("||", id="pause_button"),
             Horizontal(
                 Label("Repeat", classes="label"),
-                Switch(value=False, id="repeat_switch"),
+                Switch(value=False, id="repeat_switch", disabled=True),
                 classes="container",
             ),
             Horizontal(
                 Label("Random", classes="label"),
-                Switch(value=False, id="random_switch"),
+                Switch(value=False, id="random_switch", disabled=True),
                 classes="container",
             ),
         ))
