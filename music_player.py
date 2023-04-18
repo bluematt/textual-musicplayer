@@ -12,12 +12,12 @@ from textual.containers import Container, Horizontal, Center, Vertical, Vertical
 from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, Placeholder
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
-# The index of the first track.
-START_TRACK: int = 1
-
 # The support file types. @TODO
-TRACK_EXT: tuple[str, ...] = ('.mp3',
-                              # '.mp4', '.m4a', '.ogg', '.flac'
+TRACK_EXT: tuple[str, ...] = (".mp3",
+                              # ".mp4",
+                              # ".m4a",
+                              # ".ogg",
+                              # ".flac"
                               )
 
 
@@ -35,6 +35,8 @@ class TrackInformation(Static):
 
 
 class PlayerControls(Static):
+    """The music controls."""
+
     def compose(self) -> ComposeResult:
         yield Center(Horizontal(
             Button("|>", id="play_button"),
@@ -53,16 +55,18 @@ class PlayerControls(Static):
 
 
 class TrackList(VerticalScroll):
-    def compose(self) -> ComposeResult:
-        track_listing = DataTable(id="track_listing")
-        track_listing.cursor_type = 'row'
-        track_listing.zebra_stripes = True
+    """The scrollable list of tracks."""
 
-        yield track_listing
+    def compose(self) -> ComposeResult:
+        playlist = DataTable(id="playlist")
+        playlist.cursor_type = 'row'
+        playlist.zebra_stripes = True
+
+        yield playlist
 
 
 class MusicPlayer(Static):
-    """The music player user interface."""
+    """The main music player user interface."""
 
     def compose(self) -> ComposeResult:
         yield TrackInformation()
@@ -97,7 +101,7 @@ class MusicPlayerApp(App):
     # The list of current tracks.
     tracks: reactive[list[tuple]] = reactive([])
 
-    current_track: int = START_TRACK
+    current_track: int = 1
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -109,15 +113,13 @@ class MusicPlayerApp(App):
         self.scan_track_directory()
         self.update_track_list()
 
-        # Make sure we start the app stopped.
-        # self.stop_track()
-        self.set_focus(self.query_one('#track_listing'))
+        self.set_focus(self.query_one("#playlist"))
 
     def update_track_list(self) -> None:
-        track_listing: DataTable = self.query_one(DataTable)
+        playlist: DataTable = self.query_one("#playlist")
         tracks = iter(self.tracks)
-        track_listing.add_columns(*next(tracks))
-        track_listing.add_rows(tracks)
+        playlist.add_columns(*next(tracks))
+        playlist.add_rows(tracks)
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -150,7 +152,7 @@ class MusicPlayerApp(App):
         self.current_track += 1
         self.log(f"Track: {self.current_track}")
         if self.current_track >= len(self.tracks):
-            self.current_track = START_TRACK
+            self.current_track = 1
         self.play_track(self.current_track)
 
     def action_scan_track_directory(self) -> None:
