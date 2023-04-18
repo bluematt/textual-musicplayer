@@ -4,6 +4,8 @@ A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/
 
 Version 0.0.0.0.0.0.1-prealpha
 
+**This is very much a WIP. Use at your own risk.**
+
 ## Requirements
 
 - textual - for TUI
