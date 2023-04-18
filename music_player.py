@@ -10,8 +10,8 @@ import pygame
 from textual import log
 from textual.reactive import reactive
 from textual.app import App, ComposeResult, CSSPathType
-from textual.containers import Container, Horizontal, Center, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, Placeholder
+from textual.containers import Horizontal, Center, Vertical, VerticalScroll
+from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
 TrackType = TinyTag | ID3 | Ogg | Wave | Flac | Wma | MP4 | Aiff
@@ -90,8 +90,6 @@ class MusicPlayerApp(App):
 
     BINDINGS = [
         ("space", "toggle_play", "Play/Pause"),
-        ("backspace", "stop_play", "Stop"),
-        # ("t", "next_track", "Next track"),
         ("m", "toggle_mute", "Mute/Unmute"),
         ("d", "toggle_dark", "Toggle dark mode"),
         ("o", "open_directory", "Open directory"),
@@ -130,25 +128,32 @@ class MusicPlayerApp(App):
 
     def play_current_track(self) -> None:
         """Play the current track."""
-        self.play_track(self.current_track)
+        if self.is_playing():
+            self.pause()
+        else:
+            self.play_track(self.current_track)
 
     def compose(self) -> ComposeResult:
+        """Render the music player."""
         yield Header(show_clock=True)
         yield MusicPlayer()
         yield Footer()
 
     def on_mount(self) -> None:
+        """Mount the application."""
         # Scan for music in the current working directory.
         self.scan_track_directory()
         self.update_playlist()
 
-        playlist = self.query_one("#playlist", DataTable)
+        # Focus the playlist and set the current track to be the first track in the playlist.
+        # TODO Error handling for empty playlists.
+        playlist: DataTable = self.get_playlist()
         self.set_focus(playlist)
-        self.current_track = playlist.get_row_at(0)
+        self.current_track = tuple(playlist.get_row_at(0))
 
     def update_playlist(self) -> None:
-        """Get the list of """
-        playlist: DataTable = self.query_one("#playlist", DataTable)
+        """Update the playlist with the tracks from the current working directory."""
+        playlist: DataTable = self.get_playlist()
         tracks = iter(self.tracks)
         playlist.add_columns(*next(tracks))
         playlist.add_rows(tracks)
@@ -158,42 +163,40 @@ class MusicPlayerApp(App):
         self.dark = not self.dark
 
     def action_toggle_play(self) -> None:
+        """Toggle play/pause."""
         pygame.mixer.init()
         if self.is_playing():
             self.pause()
         else:
-            self.play_current_track()
+            self.unpause()
 
     def pause(self):
+        """Pause playback."""
         pygame.mixer.init()
         pygame.mixer.music.pause()
 
+    def unpause(self) -> None:
+        """Unpause playback."""
+        pygame.mixer.init()
+        pygame.mixer.music.unpause()
+
     def action_toggle_mute(self) -> None:
+        """Toggle mute."""
         self.mute = not self.mute
 
     def action_toggle_repeat(self) -> None:
+        """Toggle repeating."""
         repeat_switch = self.query_one('#repeat_switch')
         repeat_switch.toggle()
 
     def action_toggle_random(self) -> None:
+        """Toggle playlist randomisation."""
         random_switch = self.query_one('#random_switch')
         random_switch.toggle()
 
-    def action_stop_play(self) -> None:
-        self.stop_track()
-
     def action_open_directory(self) -> None:
+        """Open a directory to get music."""
         pass
-
-    # def action_next_track(self) -> None:
-    #     self.current_track += 1
-    #     self.log(f"Track: {self.current_track}")
-    #     if self.current_track >= len(self.tracks):
-    #         self.current_track = 1
-    #     # self.play_track(self.current_track)
-
-    def action_scan_track_directory(self) -> None:
-        self.scan_track_directory()
 
     def scan_track_directory(self) -> None:
         """Scan the current working directory for music files."""
@@ -213,14 +216,17 @@ class MusicPlayerApp(App):
         self.tracks = track_data
 
     def update_track_info(self, track: Track) -> None:
+        """Update the UI with details of the current track."""
         log(track)
 
     def stop_music(self) -> None:
+        """Stop playback."""
         pygame.mixer.init()
         pygame.mixer.music.stop()
         pygame.mixer.music.unload()
 
     def is_playing(self) -> bool:
+        """Return whether a track is currently playing."""
         pygame.mixer.init()
         return pygame.mixer.music.get_busy()
 
@@ -241,6 +247,10 @@ class MusicPlayerApp(App):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handler for selecting a row in the data table."""
         self.current_track = tuple(event.data_table.get_row_at(event.cursor_row))
+
+    def get_playlist(self) -> DataTable:
+        """Return the playlist widget."""
+        return self.query_one("#playlist", DataTable)
 
 
 if __name__ == "__main__":
