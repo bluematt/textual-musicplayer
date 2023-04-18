@@ -98,9 +98,6 @@ class MusicPlayerApp(App):
         ("q", "quit", "Quit"),
     ]
 
-    # Whether the app is muted.
-    mute: reactive[bool] = reactive(False)
-
     # The current working directory (where music files are).
     cwd: reactive[str] = reactive('./demo_music')
 
@@ -123,15 +120,11 @@ class MusicPlayerApp(App):
     def watch_current_track(self) -> None:
         """Watch for changes to `current_track`."""
         log("CURRENT_TRACK_CHANGED")
-        if self.is_playing():
-            self.play_current_track()
+        self.play_current_track()
 
     def play_current_track(self) -> None:
         """Play the current track."""
-        if self.is_playing():
-            self.pause()
-        else:
-            self.play_track(self.current_track)
+        self.play_track(self.current_track)
 
     def compose(self) -> ComposeResult:
         """Render the music player."""
@@ -182,7 +175,8 @@ class MusicPlayerApp(App):
 
     def action_toggle_mute(self) -> None:
         """Toggle mute."""
-        self.mute = not self.mute
+        pygame.mixer.init()
+        pygame.mixer.music.set_volume(1.0 - pygame.mixer.music.get_volume())
 
     def action_toggle_repeat(self) -> None:
         """Toggle repeating."""
@@ -219,16 +213,16 @@ class MusicPlayerApp(App):
         """Update the UI with details of the current track."""
         log(track)
 
+    def is_playing(self) -> bool:
+        """Return whether a track is currently playing."""
+        pygame.mixer.init()
+        return pygame.mixer.music.get_busy()
+
     def stop_music(self) -> None:
         """Stop playback."""
         pygame.mixer.init()
         pygame.mixer.music.stop()
         pygame.mixer.music.unload()
-
-    def is_playing(self) -> bool:
-        """Return whether a track is currently playing."""
-        pygame.mixer.init()
-        return pygame.mixer.music.get_busy()
 
     def play_track(self, track: Track):
         """Play a track."""
