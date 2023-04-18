@@ -4,6 +4,7 @@ import sys
 from os import walk, path
 from typing import ClassVar
 
+from rich.console import RenderableType
 from tinytag import TinyTag
 import pygame
 
@@ -17,6 +18,17 @@ from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 TrackType = TinyTag | ID3 | Ogg | Wave | Flac | Wma | MP4 | Aiff
 Track = tuple[str, ...]
 
+# Path to binaries.
+PATH_DYLIBS: str = "./venv/lib/python3.7/site-packages/pygame/.dylibs"
+
+# Index of the title column of the Track tuple.
+TRACK_TITLE_OFFSET: int = 0
+# Index of the artist column of the Track tuple.
+TRACK_ARTIST_OFFSET: int = 1
+# Index of the album column of the Track tuple.
+TRACK_ALBUM_OFFSET: int = 2
+# Index of the duration column of the Track tuple.
+TRACK_DURATION_OFFSET: int = 3
 # Index of the file column of the Track tuple.
 TRACK_FILE_OFFSET: int = 5
 
@@ -30,16 +42,39 @@ TRACK_EXT: tuple[str, ...] = (".mp3",
                               )
 
 
+class TitleInfo(Static):
+    """The track title."""
+    title: reactive[str] = reactive("<untitled>")
+
+    def render(self) -> RenderableType:
+        return f"[bold]{self.title}[/]" if self.title else "[bold]<untitled>[/]"
+
+
+class ArtistInfo(Static):
+    """The track artist."""
+    artist: reactive[str] = reactive("<unknown artist>")
+
+    def render(self) -> RenderableType:
+        return f"{self.artist}" if self.artist else "<unknown artist>"
+
+
+class AlbumInfo(Static):
+    """The track album."""
+    album: reactive[str] = reactive("<unknown album>")
+
+    def render(self) -> RenderableType:
+        return f"[italic]{self.album}[/]" if self.album else "[italic]<unknown album>[/]"
+
+
 class TrackInformation(Static):
     """The track information."""
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Center(Label("Now playing")),
-            Center(Label("[bold]<track>[/]", id="track_name")),
-            Center(Label("<artist-name>", id="artist_name")),
-            Center(Label("[italic]<album>[/]", id="album_name")),
-            id="track_information"
+            Label("Now playing"),
+            TitleInfo("[bold]<track>[/]", id="track_name"),
+            ArtistInfo("<artist-name>", id="artist_name"),
+            AlbumInfo("[italic]<album>[/]", id="album_name")
         )
 
 
@@ -68,7 +103,7 @@ class TrackList(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         playlist = DataTable(id="playlist")
-        playlist.cursor_type = 'row'
+        playlist.cursor_type = "row"
         playlist.zebra_stripes = True
 
         yield playlist
@@ -99,7 +134,7 @@ class MusicPlayerApp(App):
     ]
 
     # The current working directory (where music files are).
-    cwd: reactive[str] = reactive('./demo_music')
+    cwd: reactive[str] = reactive("./demo_music")
 
     # The list of current tracks.
     tracks: reactive[list[tuple]] = reactive([])
@@ -181,12 +216,12 @@ class MusicPlayerApp(App):
 
     def action_toggle_repeat(self) -> None:
         """Toggle repeating."""
-        repeat_switch = self.query_one('#repeat_switch')
+        repeat_switch = self.query_one("#repeat_switch")
         repeat_switch.toggle()
 
     def action_toggle_random(self) -> None:
         """Toggle playlist randomisation."""
-        random_switch = self.query_one('#random_switch')
+        random_switch = self.query_one("#random_switch")
         random_switch.toggle()
 
     def action_open_directory(self) -> None:
@@ -212,6 +247,9 @@ class MusicPlayerApp(App):
 
     def update_track_info(self, track: Track) -> None:
         """Update the UI with details of the current track."""
+        self.query_one("#track_name").title = track[TRACK_TITLE_OFFSET]
+        self.query_one("#artist_name").artist = track[TRACK_ARTIST_OFFSET]
+        self.query_one("#album_name").album = track[TRACK_ALBUM_OFFSET]
         log(track)
 
     def is_playing(self) -> bool:
@@ -262,10 +300,9 @@ class MusicPlayerApp(App):
         self.set_focus(self.get_playlist())
 
 
-
 if __name__ == "__main__":
     # Add path to the dynamic libraries
-    sys.path.append('./venv/lib/python3.7/site-packages/pygame/.dylibs')
+    sys.path.append(PATH_DYLIBS)
 
     # Initialize pygame for music playback.
     pygame.init()
