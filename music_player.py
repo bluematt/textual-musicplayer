@@ -258,10 +258,14 @@ class MusicPlayerApp(App):
 
         # Create a list of tuple(track info).
         track_data: list[Track] = [("Title", "Artist", "Album", "Length", "Genre", "File"), ]
-        [track_data.append((t.title, t.artist, t.album, t.duration, t.genre, files[idx])) for idx, t in
-         enumerate(tracks)]
+        [track_data.append((t.title, t.artist, t.album, self.format_duration(t.duration), t.genre, files[idx])) for
+         idx, t in enumerate(tracks)]
 
         self.tracks = track_data
+
+    def format_duration(self, duration: float) -> str:
+        (m, s) = divmod(duration, 60.0)
+        return f"{int(m)}\u2032{int(s):02}\u2033"
 
     def update_track_info(self, track: Track) -> None:
         """Update the UI with details of the current track."""
