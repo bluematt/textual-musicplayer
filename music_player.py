@@ -5,6 +5,7 @@ from os import walk, path
 from typing import ClassVar
 
 from rich.console import RenderableType
+from textual.binding import Binding
 from tinytag import TinyTag
 import pygame
 
@@ -12,7 +13,7 @@ from textual import log
 from textual.reactive import reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Center, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable
+from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, ContentSwitcher, Placeholder
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
 TrackType = TinyTag | ID3 | Ogg | Wave | Flac | Wma | MP4 | Aiff
@@ -109,13 +110,24 @@ class TrackList(VerticalScroll):
         yield playlist
 
 
+class DirectoryBrowser(Placeholder):
+    """The directory browser."""
+    BINDINGS = [
+        Binding("o", "close_directory", "Close directory browser"),
+    ]
+
+
 class MusicPlayer(Static):
     """The main music player user interface."""
 
     def compose(self) -> ComposeResult:
         yield TrackInformation()
         yield PlayerControls()
-        yield TrackList()
+        yield ContentSwitcher(
+            TrackList(id="tracklist"),
+            DirectoryBrowser(id="directory_browser"),
+            id="context"
+        )
 
 
 class MusicPlayerApp(App):
@@ -173,6 +185,9 @@ class MusicPlayerApp(App):
         self.scan_track_directory()
         self.update_playlist()
 
+        # Show the tracklist
+        self.query_one("#context", ContentSwitcher).current = "tracklist"
+
         # Focus the playlist
         self.focus_playlist()
 
@@ -216,17 +231,20 @@ class MusicPlayerApp(App):
 
     def action_toggle_repeat(self) -> None:
         """Toggle repeating."""
-        repeat_switch = self.query_one("#repeat_switch")
+        repeat_switch = self.query_one("#repeat_switch", Switch)
         repeat_switch.toggle()
 
     def action_toggle_random(self) -> None:
         """Toggle playlist randomisation."""
-        random_switch = self.query_one("#random_switch")
+        random_switch = self.query_one("#random_switch", Switch)
         random_switch.toggle()
 
     def action_open_directory(self) -> None:
-        """Open a directory to get music."""
-        pass
+        self.query_one("#context", ContentSwitcher).current = "directory_browser"
+        self.set_focus(self.query_one("#directory_browser", DirectoryBrowser))
+
+    def action_close_directory(self) -> None:
+        self.query_one("#context").current = "tracklist"
 
     def scan_track_directory(self) -> None:
         """Scan the current working directory for music files."""
