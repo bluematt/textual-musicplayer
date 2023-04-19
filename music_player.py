@@ -8,6 +8,7 @@ from typing import ClassVar, Iterable
 
 from rich.console import RenderableType
 from textual.binding import Binding
+from textual.message import Message
 from tinytag import TinyTag
 
 from textual import log
@@ -140,13 +141,20 @@ class DirectoryBrowser(DirectoryTree):
         Binding("o", "close_directory", "Close directory browser"),
     ]
 
+    class DirectorySelected(Message):
+        directory: str
+
+        def __init__(self, directory: str):
+            self.directory = directory
+            super().__init__()
+
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
         """Filter paths to non-hidden directories only."""
         return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
 
     def on_tree_node_selected(self, event: DirectoryBrowser.NodeSelected):
         """Handler for selecting a directory in the directory browser."""
-        log("DIRECTORY SELECTED: " + event.node.data.path)
+        self.post_message(self.DirectorySelected(event.node.data.path))
 
 
 class NowPlaying(Placeholder):
@@ -172,6 +180,53 @@ class MusicPlayer(Static):
             id="context",
             initial="tracklist"
         )
+
+
+def format_duration(duration: float) -> str:
+    """Converts a duration in seconds into a minute/second string."""
+    (m, s) = divmod(duration, 60.0)
+    return f"{int(m)}\u2032{int(s):02}\u2033"
+
+
+def stop_music() -> None:
+    """Stop playback."""
+    pygame.mixer.init()
+    pygame.mixer.music.stop()
+    pygame.mixer.music.unload()
+
+
+def pause() -> None:
+    """Pause playback."""
+    pygame.mixer.init()
+    pygame.mixer.music.pause()
+
+
+def unpause() -> None:
+    """Unpause playback."""
+    pygame.mixer.init()
+    pygame.mixer.music.unpause()
+
+
+def toggle_mute() -> None:
+    """Toggle mute."""
+    pygame.mixer.init()
+    pygame.mixer.music.set_volume(1.0 - pygame.mixer.music.get_volume())
+
+
+def is_playing() -> bool:
+    """Return whether a track is currently playing."""
+    pygame.mixer.init()
+    return pygame.mixer.music.get_busy()
+
+
+def play_track(track: Track) -> None:
+    if not track or not track[TRACK_FILE_OFFSET]:
+        log("NO TRACK")
+        return
+
+    pygame.mixer.init()
+    pygame.mixer.music.load(track[TRACK_FILE_OFFSET])
+    pygame.mixer.music.play()
 
 
 class MusicPlayerApp(App):
@@ -243,6 +298,7 @@ class MusicPlayerApp(App):
     def update_playlist(self) -> None:
         """Update the playlist with the tracks from the current working directory."""
         playlist: DataTable = self.get_playlist()
+        playlist.clear(columns=True)
         tracks = iter(self.tracks)
         playlist.add_columns(*next(tracks))
         playlist.add_rows(tracks)
@@ -254,10 +310,10 @@ class MusicPlayerApp(App):
     def action_toggle_play(self) -> None:
         """Toggle play/pause."""
         pygame.mixer.init()
-        if self.is_playing():
-            self.pause()
+        if is_playing():
+            pause()
         else:
-            self.unpause()
+            unpause()
 
     def action_toggle_now_playing(self) -> None:
         """Toggle the 'now playing' context."""
@@ -268,20 +324,8 @@ class MusicPlayerApp(App):
             self.previous_context = current_context
             self.query_one("#context", ContentSwitcher).current = "now_playing"
 
-    def pause(self) -> None:
-        """Pause playback."""
-        pygame.mixer.init()
-        pygame.mixer.music.pause()
-
-    def unpause(self) -> None:
-        """Unpause playback."""
-        pygame.mixer.init()
-        pygame.mixer.music.unpause()
-
     def action_toggle_mute(self) -> None:
-        """Toggle mute."""
-        pygame.mixer.init()
-        pygame.mixer.music.set_volume(1.0 - pygame.mixer.music.get_volume())
+        toggle_mute()
 
     def action_toggle_repeat(self) -> None:
         """Toggle repeating."""
@@ -303,24 +347,19 @@ class MusicPlayerApp(App):
 
     def scan_track_directory(self) -> None:
         """Scan the current working directory for music files."""
-        files: list[bytes | str] = [path.join(dir_path, f)
-                                    for (dir_path, _dir_names, filenames) in walk(self.cwd)
-                                    for f in filenames if
-                                    f.endswith(TRACK_EXT) and not f.startswith(".")]
+        files = self.get_files_in_directory(self.cwd)
+        self.update_tracks_from_files(files)
 
+    def update_tracks_from_files(self, files: list) -> None:
         # Get track metadata from music files.
         tracks: list[TrackType] = [TinyTag.get(f) for f in files]
 
         # Create a list of tuple(track info).
         track_data: list[Track] = [("Title", "Artist", "Album", "Length", "Genre", "File"), ]
-        [track_data.append((t.title, t.artist, t.album, self.format_duration(t.duration), t.genre, files[idx])) for
+        [track_data.append((t.title, t.artist, t.album, format_duration(t.duration), t.genre, files[idx])) for
          idx, t in enumerate(tracks)]
 
         self.tracks = track_data
-
-    def format_duration(self, duration: float) -> str:
-        (m, s) = divmod(duration, 60.0)
-        return f"{int(m)}\u2032{int(s):02}\u2033"
 
     def update_track_info(self, track: Track) -> None:
         """Update the UI with details of the current track."""
@@ -329,36 +368,20 @@ class MusicPlayerApp(App):
         self.query_one("#album_name").album = track[TRACK_ALBUM_OFFSET]
         log(track)
 
-    def is_playing(self) -> bool:
-        """Return whether a track is currently playing."""
-        pygame.mixer.init()
-        return pygame.mixer.music.get_busy()
-
-    def stop_music(self) -> None:
-        """Stop playback."""
-        pygame.mixer.init()
-        pygame.mixer.music.stop()
-        pygame.mixer.music.unload()
-
     def play_track(self, track: Track) -> None:
         """Play a track."""
         if track:
-            if self.is_playing():
-                self.stop_music()
+            if is_playing():
+                stop_music()
 
-            file = track[TRACK_FILE_OFFSET]
-
-            pygame.mixer.init()
-            pygame.mixer.music.load(file)
-            pygame.mixer.music.play()
-
+            play_track(track)
             self.update_track_info(track)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "play_button":
-            self.unpause()
+            unpause()
         if event.button.id == "pause_button":
-            self.pause()
+            pause()
 
         self.focus_playlist()
 
@@ -369,17 +392,45 @@ class MusicPlayerApp(App):
         """Handler for selecting a row in the data table."""
         self.current_track = tuple(event.data_table.get_row_at(event.cursor_row))
 
+    def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected):
+        """Handler for selecting a directory in the directory browser."""
+        files = self.get_files_in_directory(event.directory)
+        if len(files) <= 0:
+            log(f"NO USABLE FILES IN DIRECTORY {event.directory}")
+            return
+
+        stop_music()
+        self.set_working_directory(event.directory)
+        self.focus_playlist()
+
     def get_playlist(self) -> DataTable:
         """Return the playlist widget."""
         return self.query_one("#playlist", DataTable)
 
     def focus_playlist(self) -> None:
+        """Sets the context to the tracklist and focuses the playlist."""
         self.set_context("tracklist")
         self.set_focus(self.get_playlist())
 
     def set_context(self, context: str) -> None:
+        """Sets the context for the main context panel."""
         self.previous_context = self.query_one("#context", ContentSwitcher).current
         self.query_one("#context", ContentSwitcher).current = context
+
+    def set_working_directory(self, directory: str) -> None:
+        """Sets the current working directory, rescans the files therein and updates the playlist."""
+        self.cwd = directory
+        self.scan_track_directory()
+        self.update_playlist()
+
+    def get_files_in_directory(self, directory: str) -> list[bytes | str]:
+        """Returns the list of files in the directory."""
+        # TODO throw error if `directory` is not a directory
+        return [
+            path.join(dir_path, f)
+            for (dir_path, _dir_names, filenames) in walk(directory)
+            for f in filenames if f.endswith(TRACK_EXT) and not f.startswith(".")
+        ]
 
 
 if __name__ == "__main__":
