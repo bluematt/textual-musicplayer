@@ -1,20 +1,29 @@
 from __future__ import annotations
 
 import sys
-from os import walk, path
-from typing import ClassVar
+
+from os import walk, path, environ
+from pathlib import Path
+from typing import ClassVar, Iterable
 
 from rich.console import RenderableType
 from textual.binding import Binding
 from tinytag import TinyTag
-import pygame
 
 from textual import log
 from textual.reactive import reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Center, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, ContentSwitcher, Placeholder
+from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, ContentSwitcher, Placeholder, \
+    DirectoryTree, Tree
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
+
+# Hide the Pygame prompts from the terminal.
+# Imported libraries should *not* dump to the terminal...
+# See https://github.com/pygame/pygame/issues/1468
+# This may show as a warning in IDEs that support PEP 8 (E402) that don't support 'noqa'.
+environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "True"
+import pygame  # noqa: E402
 
 TrackType = TinyTag | ID3 | Ogg | Wave | Flac | Wma | MP4 | Aiff
 Track = tuple[str, ...]
@@ -42,32 +51,43 @@ TRACK_EXT: tuple[str, ...] = (".mp3",
                               # ".flac"
                               )
 
-SYM_PLAY: str = "|>"
-SYM_PAUSE: str = "||"
+SYM_PLAY: str = "\u25B6"  # ▶️
+SYM_PAUSE: str = "\u23F8"  # ⏸️
+SYM_PLAY_PAUSE: str = "\u23EF"  # ⏯️
+SYM_REPEAT: str = "\U0001F501"  # 🔁
+SYM_RANDOM: str = "\U0001F500"  # 🔀
+SYM_SPEAKER: str = "\U0001F508"  # 🔈
+SYM_SPEAKER_MUTED: str = "\U0001F507"  # 🔇
+
+LBL_TRACK_UNKNOWN: str = "<unknown track>"
+LBL_ARTIST_UNKNOWN: str = "<unknown artist>"
+LBL_ALBUM_UNKNOWN: str = "<unknown album>"
+LBL_REPEAT: str = "Repeat"
+LBL_RANDOM: str = "Random"
 
 
 class TitleInfo(Static):
     """The track title."""
-    title: reactive[str] = reactive("<untitled>")
+    title: reactive[str] = reactive(LBL_TRACK_UNKNOWN)
 
     def render(self) -> RenderableType:
-        return f"[bold]{self.title}[/]" if self.title else "[bold]<untitled>[/]"
+        return f"[bold]{self.title}[/]" if self.title else f"[bold]{LBL_TRACK_UNKNOWN}[/]"
 
 
 class ArtistInfo(Static):
     """The track artist."""
-    artist: reactive[str] = reactive("<unknown artist>")
+    artist: reactive[str] = reactive(LBL_ARTIST_UNKNOWN)
 
     def render(self) -> RenderableType:
-        return f"{self.artist}" if self.artist else "<unknown artist>"
+        return f"{self.artist}" if self.artist else LBL_ARTIST_UNKNOWN
 
 
 class AlbumInfo(Static):
     """The track album."""
-    album: reactive[str] = reactive("<unknown album>")
+    album: reactive[str] = reactive(LBL_ALBUM_UNKNOWN)
 
     def render(self) -> RenderableType:
-        return f"[italic]{self.album}[/]" if self.album else "[italic]<unknown album>[/]"
+        return f"[italic]{self.album}[/]" if self.album else f"[italic]{LBL_ALBUM_UNKNOWN}[/]"
 
 
 class TrackInformation(Static):
@@ -75,9 +95,9 @@ class TrackInformation(Static):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            TitleInfo("[bold]<track>[/]", id="track_name"),
-            ArtistInfo("<artist-name>", id="artist_name"),
-            AlbumInfo("[italic]<album>[/]", id="album_name")
+            TitleInfo(LBL_TRACK_UNKNOWN, id="track_name"),
+            ArtistInfo(LBL_ARTIST_UNKNOWN, id="artist_name"),
+            AlbumInfo(LBL_ALBUM_UNKNOWN, id="album_name")
         )
 
 
@@ -89,12 +109,12 @@ class PlayerControls(Static):
             Button(SYM_PLAY, id="play_button"),
             Button(SYM_PAUSE, id="pause_button"),
             Horizontal(
-                Label("Repeat", classes="label"),
+                Label(SYM_REPEAT + LBL_REPEAT, classes="label"),
                 Switch(value=False, id="repeat_switch", disabled=True),
                 classes="container",
             ),
             Horizontal(
-                Label("Random", classes="label"),
+                Label(SYM_RANDOM + LBL_RANDOM, classes="label"),
                 Switch(value=False, id="random_switch", disabled=True),
                 classes="container",
             ),
@@ -112,11 +132,31 @@ class TrackList(VerticalScroll):
         yield playlist
 
 
-class DirectoryBrowser(Placeholder):
+class DirectoryBrowser(DirectoryTree):
     """The directory browser."""
     BINDINGS = [
+        Binding("h", "home", "Home directory"),
+        Binding("r", "root", "Root directory"),
         Binding("o", "close_directory", "Close directory browser"),
     ]
+
+    def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
+        """Filter paths to non-hidden directories only."""
+        return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
+
+    def on_tree_node_selected(self, event: DirectoryBrowser.NodeSelected):
+        """Handler for selecting a directory in the directory browser."""
+        log("DIRECTORY SELECTED: " + event.node.data.path)
+
+
+class NowPlaying(Placeholder):
+    """Display what is currently playing."""
+    BINDINGS = []
+
+    title: reactive[str] = reactive("")
+    artist: reactive[str] = reactive("")
+    album: reactive[str] = reactive("")
+    artwork = None
 
 
 class MusicPlayer(Static):
@@ -127,8 +167,10 @@ class MusicPlayer(Static):
         yield PlayerControls()
         yield ContentSwitcher(
             TrackList(id="tracklist"),
-            DirectoryBrowser(id="directory_browser"),
-            id="context"
+            DirectoryBrowser(path=path.expanduser("~"), id="directory_browser"),
+            NowPlaying(id="now_playing"),
+            id="context",
+            initial="tracklist"
         )
 
 
@@ -138,12 +180,13 @@ class MusicPlayerApp(App):
     TITLE = "tTunes"  # 😏
     CSS_PATH: ClassVar[CSSPathType | None] = "music_player.css"
     BINDINGS = [
-        ("space", "toggle_play", "Play/Pause"),
+        ("space", "toggle_play", SYM_PLAY_PAUSE),
         ("m", "toggle_mute", "Mute/Unmute"),
         ("d", "toggle_dark", "Toggle dark mode"),
         ("o", "open_directory", "Open directory"),
         ("r", "toggle_repeat", "Toggle repeat"),
         ("n", "toggle_random", "Toggle random"),
+        ("p", "toggle_now_playing", "Now playing"),
         ("q", "quit", "Quit"),
     ]
 
@@ -155,6 +198,9 @@ class MusicPlayerApp(App):
 
     # The current track.
     current_track: reactive[Track | None] = reactive(None)
+
+    # The ID of the previous context widget.
+    previous_context: str = "tracklist"
 
     # def watch_cwd(self) -> None:
     #     """Watch for changes to `cwd`."""
@@ -187,9 +233,6 @@ class MusicPlayerApp(App):
         self.scan_track_directory()
         self.update_playlist()
 
-        # Show the tracklist
-        self.query_one("#context", ContentSwitcher).current = "tracklist"
-
         # Focus the playlist
         self.focus_playlist()
 
@@ -215,6 +258,15 @@ class MusicPlayerApp(App):
             self.pause()
         else:
             self.unpause()
+
+    def action_toggle_now_playing(self) -> None:
+        """Toggle the 'now playing' context."""
+        current_context: str = self.query_one("#context", ContentSwitcher).current
+        if current_context == "now_playing":
+            self.query_one("#context", ContentSwitcher).current = self.previous_context
+        else:
+            self.previous_context = current_context
+            self.query_one("#context", ContentSwitcher).current = "now_playing"
 
     def pause(self) -> None:
         """Pause playback."""
@@ -242,7 +294,8 @@ class MusicPlayerApp(App):
         random_switch.toggle()
 
     def action_open_directory(self) -> None:
-        self.query_one("#context", ContentSwitcher).current = "directory_browser"
+        self.set_context("directory_browser")
+        # self.query_one("#context", ContentSwitcher).current = "directory_browser"
         self.set_focus(self.query_one("#directory_browser", DirectoryBrowser))
 
     def action_close_directory(self) -> None:
@@ -321,7 +374,12 @@ class MusicPlayerApp(App):
         return self.query_one("#playlist", DataTable)
 
     def focus_playlist(self) -> None:
+        self.set_context("tracklist")
         self.set_focus(self.get_playlist())
+
+    def set_context(self, context: str) -> None:
+        self.previous_context = self.query_one("#context", ContentSwitcher).current
+        self.query_one("#context", ContentSwitcher).current = context
 
 
 if __name__ == "__main__":
