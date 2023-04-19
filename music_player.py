@@ -75,7 +75,6 @@ class TrackInformation(Static):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            Label("Now playing"),
             TitleInfo("[bold]<track>[/]", id="track_name"),
             ArtistInfo("<artist-name>", id="artist_name"),
             AlbumInfo("[italic]<album>[/]", id="album_name")

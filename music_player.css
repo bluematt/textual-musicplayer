@@ -3,7 +3,7 @@ Screen {
 }
 
 TrackInformation {
-    height: 6;
+    height: 5;
     border: solid white;
     content-align: center top;
 }
@@ -21,6 +21,10 @@ TrackList {
 #playlist {
     height: 1fr;
     width: 100%;
+}
+
+TitleInfo, ArtistInfo, AlbumInfo {
+    content-align: center middle;
 }
 
 #play {
