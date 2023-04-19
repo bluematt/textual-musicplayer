@@ -1,4 +1,4 @@
-# textual-musicplayer
+# textual-musicplayer AKA `tTunes`
 
 A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/).
 
