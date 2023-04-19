@@ -2,7 +2,8 @@
 
 A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/).
 
-Version 0.0.0.0.0.0.1-prealpha
+Version 0.0.0.0.0.0.2-prealpha (not even joking—this is a learning experience for me, so the code will *very*
+unoptimised).
 
 **This is very much a WIP. Use at your own risk.**
 
@@ -14,7 +15,8 @@ Version 0.0.0.0.0.0.1-prealpha
 
 ## Sample audio
 
-[Sample music files](https://www.soundhelix.com/audio-examples) used in the development of this app were downloaded from [SoundHelix](https://www.soundhelix.com/).  Copyright for these belongs to the appropriate artist.
+[Sample music files](https://www.soundhelix.com/audio-examples) used in the development of this app were downloaded
+from [SoundHelix](https://www.soundhelix.com/). Copyright for these belongs to the appropriate artist(s).
 
 If you don't have any music to hand, pop these in `./demo_music` to get started.
 
@@ -32,11 +34,19 @@ $ textual run --dev music_player.py
 
 - [x] play `mp3` music files
 - [x] allow the user to select the music source directory (duh!)
-- [ ] see if I can work out how reactivity, events, widgets, etc. actually work
-- [ ] make the bloody thing work!
+- [x] make the bloody thing work!
+- [ ] make the bloody thing work better!
+- [ ] see if I can work out how reactivity, events, widgets, etc. actually work (getting there!)
 - [ ] add support for `mp4`, `m4a`, `ogg` and/or `flac` files :-)
 - [ ] clean up the UI (I'm looking at you, footer!)
-- [ ] use `session.yaml` (or something similar maybe) to record session info (current track, position, volume, etc.)
+- [ ] use `session.yaml` (or something similar maybe) to record session info (current track, position, volume, etc.) so
+  that you can start where you left off last time (if one was so inclined)
 - [ ] maybe - drag/drop source folder?
-- [ ] maybe - "now playing" with [chonky embedded album artwork](https://github.com/darrenburns/rich-pixels)? (wouldn't that be neat?!)
-- [ ] other cool stuff!
+- [ ] maybe - "now playing" with [chonky embedded album artwork](https://github.com/darrenburns/rich-pixels)? (wouldn't
+  that be neat?!)
+- [ ] other cool stuff!?!
+
+## Notes
+
+- If you are running this with the `textual console`, it can get a little chuggy. It seems pretty swift when running
+  stand-alone.
