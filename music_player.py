@@ -217,7 +217,7 @@ class MusicPlayerApp(App):
         else:
             self.unpause()
 
-    def pause(self):
+    def pause(self) -> None:
         """Pause playback."""
         pygame.mixer.init()
         pygame.mixer.music.pause()
@@ -288,7 +288,7 @@ class MusicPlayerApp(App):
         pygame.mixer.music.stop()
         pygame.mixer.music.unload()
 
-    def play_track(self, track: Track):
+    def play_track(self, track: Track) -> None:
         """Play a track."""
         if track:
             if self.is_playing():
