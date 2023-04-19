@@ -35,9 +35,9 @@ $ textual run --dev music_player.py
 ## Roadmap(?!)
 
 - [x] play `mp3` music files
+- [x] allow the user to select the music source directory (duh!)
 - [ ] see if I can work out how reactivity, events, widgets, etc. actually work
 - [ ] make the bloody thing work!
-- [ ] allow the user to select the music source directory (duh!)
 - [ ] add support for `mp4`, `m4a`, `ogg` and/or `flac` files :-)
 - [ ] clean up the UI (I'm looking at you, footer!)
 - [ ] use `session.yaml` (or something similar maybe) to record session info (current track, position, volume, etc.)
