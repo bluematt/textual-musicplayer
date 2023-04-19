@@ -66,6 +66,9 @@ LBL_ALBUM_UNKNOWN: str = "<unknown album>"
 LBL_REPEAT: str = "Repeat"
 LBL_RANDOM: str = "Random"
 
+PATH_HOME: str = "~"
+PATH_ROOT: str = "/"
+
 
 class TitleInfo(Static):
     """The track title."""
@@ -156,6 +159,12 @@ class DirectoryBrowser(DirectoryTree):
         """Handler for selecting a directory in the directory browser."""
         self.post_message(self.DirectorySelected(event.node.data.path))
 
+    def action_home(self):
+        self.path = path.expanduser(PATH_HOME)
+
+    def action_root(self):
+        self.path = PATH_ROOT
+
 
 class NowPlaying(Placeholder):
     """Display what is currently playing."""
@@ -175,7 +184,7 @@ class MusicPlayer(Static):
         yield PlayerControls()
         yield ContentSwitcher(
             TrackList(id="tracklist"),
-            DirectoryBrowser(path=path.expanduser("~"), id="directory_browser"),
+            DirectoryBrowser(path=path.expanduser(PATH_HOME), id="directory_browser"),
             NowPlaying(id="now_playing"),
             id="context",
             initial="tracklist"
@@ -361,21 +370,23 @@ class MusicPlayerApp(App):
 
         self.tracks = track_data
 
-    def update_track_info(self, track: Track) -> None:
+    def update_track_info_track(self, track: Track) -> None:
         """Update the UI with details of the current track."""
-        self.query_one("#track_name").title = track[TRACK_TITLE_OFFSET]
-        self.query_one("#artist_name").artist = track[TRACK_ARTIST_OFFSET]
-        self.query_one("#album_name").album = track[TRACK_ALBUM_OFFSET]
-        log(track)
+        self.update_track_info(track[TRACK_TITLE_OFFSET], track[TRACK_ARTIST_OFFSET], track[TRACK_ALBUM_OFFSET])
+
+    def update_track_info(self, title: str, artist: str, album: str):
+        self.query_one("#track_name").title = title
+        self.query_one("#artist_name").artist = artist
+        self.query_one("#album_name").album = album
 
     def play_track(self, track: Track) -> None:
         """Play a track."""
-        if track:
-            if is_playing():
-                stop_music()
+        if is_playing():
+            self.stop_music()
 
+        if track:
             play_track(track)
-            self.update_track_info(track)
+            self.update_track_info_track(track)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "play_button":
@@ -399,9 +410,13 @@ class MusicPlayerApp(App):
             log(f"NO USABLE FILES IN DIRECTORY {event.directory}")
             return
 
-        stop_music()
+        self.stop_music()
         self.set_working_directory(event.directory)
         self.focus_playlist()
+
+    def stop_music(self):
+        self.update_track_info(None, None, None)
+        stop_music()
 
     def get_playlist(self) -> DataTable:
         """Return the playlist widget."""
