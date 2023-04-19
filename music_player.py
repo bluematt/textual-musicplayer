@@ -425,7 +425,9 @@ class MusicPlayerApp(App):
 
     def get_files_in_directory(self, directory: str) -> list[bytes | str]:
         """Returns the list of files in the directory."""
-        # TODO throw error if `directory` is not a directory
+        if not path.exists(directory) or not path.isdir(directory):
+            raise FileNotFoundError
+
         return [
             path.join(dir_path, f)
             for (dir_path, _dir_names, filenames) in walk(directory)
