@@ -42,6 +42,9 @@ TRACK_EXT: tuple[str, ...] = (".mp3",
                               # ".flac"
                               )
 
+SYM_PLAY: str = "|>"
+SYM_PAUSE: str = "||"
+
 
 class TitleInfo(Static):
     """The track title."""
@@ -84,8 +87,8 @@ class PlayerControls(Static):
 
     def compose(self) -> ComposeResult:
         yield Center(Horizontal(
-            Button("|>", id="play_button"),
-            Button("||", id="pause_button"),
+            Button(SYM_PLAY, id="play_button"),
+            Button(SYM_PAUSE, id="pause_button"),
             Horizontal(
                 Label("Repeat", classes="label"),
                 Switch(value=False, id="repeat_switch", disabled=True),
@@ -133,8 +136,8 @@ class MusicPlayer(Static):
 class MusicPlayerApp(App):
     """A music player app."""
 
+    TITLE = "tTunes"  # 😏
     CSS_PATH: ClassVar[CSSPathType | None] = "music_player.css"
-
     BINDINGS = [
         ("space", "toggle_play", "Play/Pause"),
         ("m", "toggle_mute", "Mute/Unmute"),
