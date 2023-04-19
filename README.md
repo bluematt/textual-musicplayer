@@ -14,13 +14,9 @@ Version 0.0.0.0.0.0.1-prealpha
 
 ## Sample audio
 
-Sample music files used in the development of this app were downloaded from [SoundHelix](https://www.soundhelix.com/).  Copyright for these belongs to the appropriate artist.
+[Sample music files](https://www.soundhelix.com/audio-examples) used in the development of this app were downloaded from [SoundHelix](https://www.soundhelix.com/).  Copyright for these belongs to the appropriate artist.
 
-- https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3
-- https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3
-- https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3
-
-Pop these in `./demo_music` to get started.
+If you don't have any music to hand, pop these in `./demo_music` to get started.
 
 ## Basic installation (YMMV)
 
