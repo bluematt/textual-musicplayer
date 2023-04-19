@@ -4,6 +4,7 @@ import sys
 
 from os import walk, path, environ
 from pathlib import Path
+from random import shuffle
 from typing import ClassVar, Iterable
 
 from rich.console import RenderableType
@@ -16,7 +17,7 @@ from textual.reactive import reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Center, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, ContentSwitcher, Placeholder, \
-    DirectoryTree, Tree
+    DirectoryTree
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
 # Hide the Pygame prompts from the terminal.
@@ -119,7 +120,7 @@ class PlayerControls(Static):
             ),
             Horizontal(
                 Label(SYM_RANDOM + LBL_RANDOM, classes="label"),
-                Switch(value=False, id="random_switch", disabled=True),
+                Switch(value=False, id="random_switch"),
                 classes="container",
             ),
         ))
@@ -308,9 +309,8 @@ class MusicPlayerApp(App):
         """Update the playlist with the tracks from the current working directory."""
         playlist: DataTable = self.get_playlist()
         playlist.clear(columns=True)
-        tracks = iter(self.tracks)
-        playlist.add_columns(*next(tracks))
-        playlist.add_rows(tracks)
+        playlist.add_columns("Title", "Artist", "Album", "Length", "Genre", "File")
+        playlist.add_rows(self.tracks)
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -346,6 +346,13 @@ class MusicPlayerApp(App):
         random_switch = self.query_one("#random_switch", Switch)
         random_switch.toggle()
 
+    def sort_tracks(self):
+        random_switch = self.query_one("#random_switch", Switch)
+        if random_switch.value:
+            shuffle(self.tracks)
+        else:
+            self.tracks.sort(key=lambda row: row[TRACK_FILE_OFFSET])
+
     def action_open_directory(self) -> None:
         self.set_context("directory_browser")
         # self.query_one("#context", ContentSwitcher).current = "directory_browser"
@@ -364,11 +371,12 @@ class MusicPlayerApp(App):
         tracks: list[TrackType] = [TinyTag.get(f) for f in files]
 
         # Create a list of tuple(track info).
-        track_data: list[Track] = [("Title", "Artist", "Album", "Length", "Genre", "File"), ]
+        track_data: list[Track] = []
         [track_data.append((t.title, t.artist, t.album, format_duration(t.duration), t.genre, files[idx])) for
          idx, t in enumerate(tracks)]
 
         self.tracks = track_data
+        self.sort_tracks()
 
     def update_track_info_track(self, track: Track) -> None:
         """Update the UI with details of the current track."""
@@ -391,13 +399,23 @@ class MusicPlayerApp(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "play_button":
             unpause()
+
         if event.button.id == "pause_button":
             pause()
 
         self.focus_playlist()
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
-        log(event.switch.id)
+        pass
+
+        if event.switch.id == "random_switch":
+            log("RANDOM!")
+            self.sort_tracks()
+            self.update_playlist()
+
+        # TODO Implement repeat.
+        if event.switch.id == "repeat_switch":
+            pass
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handler for selecting a row in the data table."""
@@ -443,11 +461,15 @@ class MusicPlayerApp(App):
         if not path.exists(directory) or not path.isdir(directory):
             raise FileNotFoundError
 
-        return [
+        files = [
             path.join(dir_path, f)
             for (dir_path, _dir_names, filenames) in walk(directory)
             for f in filenames if f.endswith(TRACK_EXT) and not f.startswith(".")
         ]
+
+        files.sort()
+
+        return files
 
 
 if __name__ == "__main__":
