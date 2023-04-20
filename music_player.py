@@ -438,7 +438,7 @@ class MusicPlayerApp(App):
         self.sort_tracks()
 
     def update_track_info_track(self, track: Track) -> None:
-        """Update track infor with a track's info."""
+        """Update track info with a track's info."""
         self.update_track_info(track[TRACK_TITLE_OFFSET], track[TRACK_ARTIST_OFFSET], track[TRACK_ALBUM_OFFSET])
 
     def update_track_info(self, title: str, artist: str, album: str):
