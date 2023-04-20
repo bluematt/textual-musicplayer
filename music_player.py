@@ -7,18 +7,18 @@ from pathlib import Path
 from random import shuffle
 from typing import ClassVar, Iterable
 
+from tinytag import TinyTag
+from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
+
 from rich.console import RenderableType
+from textual import log
 from textual.binding import Binding
 from textual.message import Message
-from tinytag import TinyTag
-
-from textual import log
 from textual.reactive import reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Center, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, ContentSwitcher, Placeholder, \
     DirectoryTree
-from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
 # Hide the Pygame prompts from the terminal.
 # Imported libraries should *not* dump to the terminal...
