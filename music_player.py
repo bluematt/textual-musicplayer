@@ -175,6 +175,7 @@ class DirectoryBrowser(DirectoryTree):
         """Close the directory browser and show the playlist."""
         self.app.focus_playlist()
 
+
 class NowPlaying(Placeholder):
     """Display what is currently playing."""
     BINDINGS = []
@@ -247,14 +248,25 @@ def is_playing() -> bool:
     return pygame.mixer.music.get_busy()
 
 
-def play_track(track: Track) -> None:
+def play_track(track: Track, loops: int = -1) -> None:
+    """Play a track."""
     if not track or not track[TRACK_FILE_OFFSET]:
-        log("NO TRACK")
+        log("NO TRACK TO PLAY")
         return
 
     pygame.mixer.init()
     pygame.mixer.music.load(track[TRACK_FILE_OFFSET])
-    pygame.mixer.music.play()
+    pygame.mixer.music.play(loops=loops)
+
+
+def queue_track(track: Track = None, loops: int = -1) -> None:
+    """Queue a track for playback when the current track finishes."""
+    if not track or not track[TRACK_FILE_OFFSET]:
+        log("NO TRACK TO QUEUE")
+        return
+
+    pygame.mixer.init()
+    pygame.mixer.music.queue(track[TRACK_FILE_OFFSET], loops=loops)
 
 
 class MusicPlayerApp(App):
@@ -285,6 +297,8 @@ class MusicPlayerApp(App):
     # The index of the current track.
     current_track_index: reactive[int] = reactive(0)
 
+    next_track: Track = None
+
     # The index of the previous track.
     previous_track_index: int
 
@@ -309,6 +323,9 @@ class MusicPlayerApp(App):
         """Watch for changes to `current_track_index`."""
         self.previous_track_index = previous_track_index
         self.current_track = self.tracks[new_track_index]
+        # TODO This is likely to throw an out-of-bounds error if the current track
+        #      is the last track, I reckon.  Fix this.
+        self.next_track = self.tracks[new_track_index + 1]
 
     def set_playlist_current_icon(self, icon: str, row: int, previous_row: int = None) -> None:
         """Set the icon for the currently playing track in the playlist."""
@@ -319,7 +336,7 @@ class MusicPlayerApp(App):
 
     def play_current_track(self) -> None:
         """Play the current track."""
-        self.play_track(self.current_track)
+        self.play_track(self.current_track, self.next_track)
         self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def compose(self) -> ComposeResult:
@@ -447,14 +464,20 @@ class MusicPlayerApp(App):
         self.query_one("#artist_name").artist = artist
         self.query_one("#album_name").album = album
 
-    def play_track(self, track: Track) -> None:
+    def play_track(self, track: Track, next_track: Track = None) -> None:
         """Play a track."""
         if is_playing():
             self.stop_music()
 
         if track:
-            play_track(track)
+            play_track(track, self.get_loops())
             self.update_track_info_track(track)
+            if next_track:
+                queue_track(next_track)
+
+    def get_loops(self) -> int:
+        """Return how many times to loop a track, based on the repeat switch's state."""
+        return -1 if self.query_one('#repeat_switch', Switch).value else 0
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handler for button presses."""
@@ -547,6 +570,7 @@ if __name__ == "__main__":
     # Initialize pygame for music playback.
     pygame.init()
     pygame.mixer.init()
+    pygame.mixer.music.set_volume(1.0)
 
     app: MusicPlayerApp = MusicPlayerApp()
     app.run()
