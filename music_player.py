@@ -7,10 +7,14 @@ from pathlib import Path
 from random import shuffle
 from typing import ClassVar, Iterable
 
+from textual.coordinate import Coordinate
+from textual.widgets._data_table import CellType
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
+from rich.text import Text
 from rich.console import RenderableType
+
 from textual import log
 from textual.binding import Binding
 from textual.message import Message
@@ -264,6 +268,12 @@ class MusicPlayerApp(App):
     # The current track.
     current_track: reactive[Track | None] = reactive(None)
 
+    # The index of the current track.
+    current_track_index: reactive[int] = reactive(0)
+
+    # The index of the previous track.
+    previous_track_index: int
+
     # The ID of the previous context widget.
     previous_context: str = "tracklist"
 
@@ -279,12 +289,25 @@ class MusicPlayerApp(App):
 
     def watch_current_track(self) -> None:
         """Watch for changes to `current_track`."""
-        log("CURRENT_TRACK_CHANGED")
         self.play_current_track()
+
+    def watch_current_track_index(self, previous_track_index: int, new_track_index: int) -> None:
+        """Watch for changes to `current_track_index`."""
+        self.previous_track_index = previous_track_index
+        self.current_track = self.tracks[new_track_index]
+        log(self.current_track_index, self.previous_track_index)
+
+    def set_playlist_current_icon(self, icon: str, row: int, previous_row: int = None) -> None:
+        """Set the icon for the currently playing track in the playlist."""
+        playlist: DataTable = self.get_playlist()
+        if previous_row is not None:
+            playlist.update_cell_at(Coordinate(row=previous_row, column=0), "")
+        playlist.update_cell_at(Coordinate(row=row, column=0), icon)
 
     def play_current_track(self) -> None:
         """Play the current track."""
         self.play_track(self.current_track)
+        self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def compose(self) -> ComposeResult:
         """Render the music player."""
@@ -303,14 +326,30 @@ class MusicPlayerApp(App):
 
         # Set the current track to be the first track in the playlist.
         # TODO Error handling for empty playlists.
-        self.current_track = tuple(self.get_playlist().get_row_at(0))
+        self.current_track_index = 0
 
     def update_playlist(self) -> None:
         """Update the playlist with the tracks from the current working directory."""
+
+        # Create the visual data for the playlist.
+        playlist_data = []
+        for track in self.tracks:
+            t = list(track[:5])
+            t[3] = Text(format_duration(t[3]), justify="right")
+            t.insert(0, "")
+            playlist_data.append(t)
+
         playlist: DataTable = self.get_playlist()
         playlist.clear(columns=True)
-        playlist.add_columns("Title", "Artist", "Album", "Length", "Genre", "File")
-        playlist.add_rows(self.tracks)
+        # TODO See if there is a way to fill the terminal with tables. See: https://github.com/Textualize/textual/discussions/1942
+        # TODO This can probably be optimised by laying out the shape of the grid in advance, and just refilling the data.
+        playlist.add_column(label=" ", width=1, key="status")
+        playlist.add_column(label="Title")
+        playlist.add_column(label="Artist")
+        playlist.add_column(label="Album")
+        playlist.add_column(label="Length")
+        playlist.add_column(label="Genre")
+        playlist.add_rows(playlist_data)
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -321,8 +360,10 @@ class MusicPlayerApp(App):
         pygame.mixer.init()
         if is_playing():
             pause()
+            self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
         else:
             unpause()
+            self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def action_toggle_now_playing(self) -> None:
         """Toggle the 'now playing' context."""
@@ -334,6 +375,7 @@ class MusicPlayerApp(App):
             self.query_one("#context", ContentSwitcher).current = "now_playing"
 
     def action_toggle_mute(self) -> None:
+        """Action to toggle muting."""
         toggle_mute()
 
     def action_toggle_repeat(self) -> None:
@@ -347,6 +389,7 @@ class MusicPlayerApp(App):
         random_switch.toggle()
 
     def sort_tracks(self):
+        """Sort the tracks according to the current app state."""
         random_switch = self.query_one("#random_switch", Switch)
         if random_switch.value:
             shuffle(self.tracks)
@@ -354,11 +397,12 @@ class MusicPlayerApp(App):
             self.tracks.sort(key=lambda row: row[TRACK_FILE_OFFSET])
 
     def action_open_directory(self) -> None:
+        """Open the directory_browser."""
         self.set_context("directory_browser")
-        # self.query_one("#context", ContentSwitcher).current = "directory_browser"
         self.set_focus(self.query_one("#directory_browser", DirectoryBrowser))
 
     def action_close_directory(self) -> None:
+        """Close the directory_browser."""
         self.query_one("#context").current = "tracklist"
 
     def scan_track_directory(self) -> None:
@@ -372,17 +416,18 @@ class MusicPlayerApp(App):
 
         # Create a list of tuple(track info).
         track_data: list[Track] = []
-        [track_data.append((t.title, t.artist, t.album, format_duration(t.duration), t.genre, files[idx])) for
+        [track_data.append((t.title, t.artist, t.album, t.duration, t.genre, files[idx])) for
          idx, t in enumerate(tracks)]
 
         self.tracks = track_data
         self.sort_tracks()
 
     def update_track_info_track(self, track: Track) -> None:
-        """Update the UI with details of the current track."""
+        """Update track infor with a track's info."""
         self.update_track_info(track[TRACK_TITLE_OFFSET], track[TRACK_ARTIST_OFFSET], track[TRACK_ALBUM_OFFSET])
 
     def update_track_info(self, title: str, artist: str, album: str):
+        """Update the UI with details of the current track."""
         self.query_one("#track_name").title = title
         self.query_one("#artist_name").artist = artist
         self.query_one("#album_name").album = album
@@ -397,6 +442,7 @@ class MusicPlayerApp(App):
             self.update_track_info_track(track)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handler for button presses."""
         if event.button.id == "play_button":
             unpause()
 
@@ -406,6 +452,7 @@ class MusicPlayerApp(App):
         self.focus_playlist()
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
+        """Handler for switch changes."""
         pass
 
         if event.switch.id == "random_switch":
@@ -419,7 +466,7 @@ class MusicPlayerApp(App):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handler for selecting a row in the data table."""
-        self.current_track = tuple(event.data_table.get_row_at(event.cursor_row))
+        self.current_track_index = event.cursor_row
 
     def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected):
         """Handler for selecting a directory in the directory browser."""
@@ -433,6 +480,7 @@ class MusicPlayerApp(App):
         self.focus_playlist()
 
     def stop_music(self):
+        """Stop the music."""
         self.update_track_info(None, None, None)
         stop_music()
 
