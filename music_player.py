@@ -19,7 +19,7 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import reactive
 from textual.app import App, ComposeResult, CSSPathType
-from textual.containers import Horizontal, Center, Vertical, VerticalScroll
+from textual.containers import Horizontal, Center, Vertical, VerticalScroll, Container
 from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, ContentSwitcher, Placeholder, \
     DirectoryTree
 
@@ -70,7 +70,7 @@ LBL_ALBUM_UNKNOWN: str = "<unknown album>"
 LBL_REPEAT: str = "Repeat"
 LBL_RANDOM: str = "Random"
 
-PATH_HOME: str = "/"
+PATH_HOME: str = "~"
 PATH_ROOT: str = "/"
 
 
@@ -143,9 +143,9 @@ class TrackList(VerticalScroll):
 class DirectoryBrowser(DirectoryTree):
     """The directory browser."""
     BINDINGS = [
-        # Binding("h", "home", "Home directory"),
-        # Binding("r", "root", "Root directory"),
-        Binding("o", "close_directory", "Close directory browser"),
+        Binding(".", "home", "Home directory"),
+        Binding("/", "root", "Root directory"),
+        Binding("o", "close_browser", "Close"),
     ]
 
     class DirectorySelected(Message):
@@ -159,20 +159,21 @@ class DirectoryBrowser(DirectoryTree):
         """Filter paths to non-hidden directories only."""
         return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
 
-    def on_tree_node_selected(self, event: DirectoryBrowser.NodeSelected):
+    def on_tree_node_selected(self, event: DirectoryBrowser.NodeSelected) -> None:
         """Handler for selecting a directory in the directory browser."""
         self.post_message(self.DirectorySelected(event.node.data.path))
 
-    def action_home(self):
-        """Reset the directory browser to the user's home directory."""
-        # TODO This does not work as the widget cannot be refreshed in this way.
-        self.path = path.expanduser(PATH_HOME)
+    def action_home(self) -> None:
+        """Set the root of the directory browser to `~`."""
+        self.parent.refresh_directory_browser(PATH_HOME)
 
-    def action_root(self):
-        """Reset the directory browser to the root directory."""
-        # TODO This does not work as the widget cannot be refreshed in this way.
-        self.path = PATH_ROOT
+    def action_root(self) -> None:
+        """Set the root of the directory browser to `/`."""
+        self.parent.refresh_directory_browser(PATH_ROOT)
 
+    def action_close_browser(self) -> None:
+        """Close the directory browser and show the playlist."""
+        self.app.focus_playlist()
 
 class NowPlaying(Placeholder):
     """Display what is currently playing."""
@@ -184,19 +185,29 @@ class NowPlaying(Placeholder):
     artwork = None
 
 
+class ContextSwitcher(ContentSwitcher):
+
+    def compose(self) -> ComposeResult:
+        yield TrackList(id="tracklist")
+        yield self.new_directory_browser(PATH_HOME)
+        yield NowPlaying(id="now_playing")
+
+    def new_directory_browser(self, base_path: str) -> DirectoryBrowser:
+        return DirectoryBrowser(path=path.expanduser(base_path), id="directory_browser")
+
+    def refresh_directory_browser(self, base_path: str):
+        self.query_one("#directory_browser", DirectoryBrowser).remove()
+        self.mount(self.new_directory_browser(base_path))
+        self.query_one("#directory_browser", DirectoryBrowser).focus()
+
+
 class MusicPlayer(Static):
     """The main music player user interface."""
 
     def compose(self) -> ComposeResult:
         yield TrackInformation()
         yield PlayerControls()
-        yield ContentSwitcher(
-            TrackList(id="tracklist"),
-            DirectoryBrowser(path=path.expanduser(PATH_HOME), id="directory_browser"),
-            NowPlaying(id="now_playing"),
-            id="context",
-            initial="tracklist"
-        )
+        yield ContextSwitcher(id="context", initial="tracklist")
 
 
 def format_duration(duration: float) -> str:
@@ -298,7 +309,6 @@ class MusicPlayerApp(App):
         """Watch for changes to `current_track_index`."""
         self.previous_track_index = previous_track_index
         self.current_track = self.tracks[new_track_index]
-        log(self.current_track_index, self.previous_track_index)
 
     def set_playlist_current_icon(self, icon: str, row: int, previous_row: int = None) -> None:
         """Set the icon for the currently playing track in the playlist."""
@@ -344,8 +354,10 @@ class MusicPlayerApp(App):
 
         playlist: DataTable = self.get_playlist()
         playlist.clear(columns=True)
-        # TODO See if there is a way to fill the terminal with tables. See: https://github.com/Textualize/textual/discussions/1942
-        # TODO This can probably be optimised by laying out the shape of the grid in advance, and just refilling the data.
+        # TODO See if there is a way to fill the terminal with tables.
+        #      See: https://github.com/Textualize/textual/discussions/1942
+        # TODO This can probably be optimised by laying out the shape
+        #      of the grid in advance, and just refilling the data.
         playlist.add_column(label=" ", width=1, key="status")
         playlist.add_column(label="Title")
         playlist.add_column(label="Artist")
@@ -465,7 +477,6 @@ class MusicPlayerApp(App):
         pass
 
         if event.switch.id == "random_switch":
-            log("RANDOM!")
             self.sort_tracks()
             self.update_playlist()
 
