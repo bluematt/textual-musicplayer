@@ -8,14 +8,13 @@ from random import shuffle
 from typing import ClassVar, Iterable
 
 from textual.coordinate import Coordinate
-from textual.widgets._data_table import CellType
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
 from rich.text import Text
 from rich.console import RenderableType
 
-from textual import log
+from textual import log, events
 from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import reactive
@@ -71,7 +70,7 @@ LBL_ALBUM_UNKNOWN: str = "<unknown album>"
 LBL_REPEAT: str = "Repeat"
 LBL_RANDOM: str = "Random"
 
-PATH_HOME: str = "~"
+PATH_HOME: str = "/"
 PATH_ROOT: str = "/"
 
 
@@ -144,8 +143,8 @@ class TrackList(VerticalScroll):
 class DirectoryBrowser(DirectoryTree):
     """The directory browser."""
     BINDINGS = [
-        Binding("h", "home", "Home directory"),
-        Binding("r", "root", "Root directory"),
+        # Binding("h", "home", "Home directory"),
+        # Binding("r", "root", "Root directory"),
         Binding("o", "close_directory", "Close directory browser"),
     ]
 
@@ -165,9 +164,13 @@ class DirectoryBrowser(DirectoryTree):
         self.post_message(self.DirectorySelected(event.node.data.path))
 
     def action_home(self):
+        """Reset the directory browser to the user's home directory."""
+        # TODO This does not work as the widget cannot be refreshed in this way.
         self.path = path.expanduser(PATH_HOME)
 
     def action_root(self):
+        """Reset the directory browser to the root directory."""
+        # TODO This does not work as the widget cannot be refreshed in this way.
         self.path = PATH_ROOT
 
 
@@ -450,6 +453,12 @@ class MusicPlayerApp(App):
             pause()
 
         self.focus_playlist()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handler for unhandled key presses."""
+        # Save a screenshot to the desktop.
+        if event.key == "s":
+            self.save_screenshot(path=path.expanduser("~/Desktop"))
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Handler for switch changes."""

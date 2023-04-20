@@ -2,7 +2,7 @@
 
 A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/).
 
-![screenshot.svg](Screenshot)
+![screenshot.png](screenshot.png)
 
 Version 0.0.0.0.0.0.2-prealpha (not even joking—this is a learning experience for me, so the code will *very*
 unoptimised).
