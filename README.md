@@ -2,7 +2,7 @@
 
 A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/).
 
-![screenshot.svg](Screenshot)
+![/bluematt/textual-musicplayer/blob/main/screenshot.svg](Screenshot)
 
 Version 0.0.0.0.0.0.2-prealpha (not even joking—this is a learning experience for me, so the code will *very*
 unoptimised).
