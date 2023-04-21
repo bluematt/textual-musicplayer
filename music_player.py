@@ -171,7 +171,7 @@ class TrackList(VerticalScroll):
 class DirectoryBrowser(DirectoryTree):
     """The directory browser."""
     BINDINGS = [
-        Binding(".", "home", "Home directory"),
+        Binding("~", "home", "Home directory"),
         Binding("/", "root", "Root directory"),
         Binding("o", "close_browser", "Close"),
     ]
@@ -304,14 +304,14 @@ class MusicPlayerApp(App):
     TITLE = "tTunes"  # 😏
     CSS_PATH: ClassVar[CSSPathType | None] = "music_player.css"
     BINDINGS = [
-        ("space", "toggle_play", SYM_PLAY_PAUSE),
-        ("m", "toggle_mute", "Mute/Unmute"),
-        ("d", "toggle_dark", "Toggle dark mode"),
-        ("o", "open_directory", "Open directory"),
-        ("r", "toggle_repeat", "Toggle repeat"),
-        ("n", "toggle_random", "Toggle random"),
-        ("p", "toggle_now_playing", "Now playing"),
-        ("q", "quit", "Quit"),
+        Binding("space", "toggle_play", SYM_PLAY_PAUSE),
+        Binding("m", "toggle_mute", "Mute/Unmute"),
+        Binding("d", "toggle_dark", "Toggle dark mode"),
+        Binding("o", "open_directory", "Open directory"),
+        Binding("r", "toggle_repeat", "Toggle repeat", show=False),
+        Binding("m", "toggle_random", "Toggle random", show=False),
+        Binding("p", "toggle_now_playing", "Now playing"),
+        Binding("q", "quit", "Quit", show=False),
     ]
 
     # The current working directory (where music files are).
