@@ -3,7 +3,7 @@ Screen {
 }
 
 TrackInformation {
-    height: 5;
+    height: 6;
     border: solid white;
     content-align: center top;
 }
@@ -30,6 +30,19 @@ DataTable {
 
 TitleInfo, ArtistInfo, AlbumInfo {
     content-align: center middle;
+}
+
+ProgressBar {
+    content-align: center middle;
+    background: grey;
+    height: 1;
+    width: 100vw;
+}
+
+ProgressBarTrack {
+    background: white;
+    height: 1;
+    width: 100%;
 }
 
 #play {

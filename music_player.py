@@ -8,20 +8,21 @@ from random import shuffle
 from typing import ClassVar, Iterable
 
 from textual.coordinate import Coordinate
+from textual.timer import Timer
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
-from rich.text import Text
-from rich.console import RenderableType
+from rich.text import Text  # noqa - required by textual
+from rich.console import RenderableType  # noqa - required by textual
 
 from textual import log, events
 from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import reactive
 from textual.app import App, ComposeResult, CSSPathType
-from textual.containers import Horizontal, Center, Vertical, VerticalScroll, Container
-from textual.widgets import Header, Footer, Static, Button, Switch, Label, DataTable, ContentSwitcher, Placeholder, \
-    DirectoryTree
+from textual.containers import Horizontal, Center, Vertical, VerticalScroll
+from textual.widgets import Header, Footer, Static, Button, Switch
+from textual.widgets import Label, DataTable, ContentSwitcher, Placeholder, DirectoryTree
 
 # Hide the Pygame prompts from the terminal.
 # Imported libraries should *not* dump to the terminal...
@@ -98,6 +99,32 @@ class AlbumInfo(Static):
         return f"[italic]{self.album}[/]" if self.album else f"[italic]{LBL_ALBUM_UNKNOWN}[/]"
 
 
+class ProgressBar(Static):
+    """A bar that tracks progress."""
+
+    # The multiplier for `percent_complete` to fill up the bar's width.
+    # TODO Tweak this to fill it up properly, based on the TODO in `ProgressBarTrack`.
+    MAX_MULTIPLIER: float = 100.0
+
+    class ProgressBarTrack(Static):
+        """The track inside the `ProgressBar` that tracks progress."""
+        # TODO There seems to be a bug where the width is about 80-90% of
+        #      the parent at 100% width.
+
+    percent_complete: reactive[float] = reactive(0.0)
+
+    def compose(self) -> ComposeResult:
+        yield self.ProgressBarTrack(id="progress_bar_track")
+
+    def watch_percent_complete(self):
+        """Watch `percent_complete`."""
+        self.update_track_width(self.percent_complete * self.MAX_MULTIPLIER)
+
+    def update_track_width(self, width: float):
+        """Update the width of the track as a percentage."""
+        self.query_one("#progress_bar_track", self.ProgressBarTrack).styles.width = f"{width}%"
+
+
 class TrackInformation(Static):
     """The track information."""
 
@@ -105,7 +132,8 @@ class TrackInformation(Static):
         yield Vertical(
             TitleInfo(LBL_TRACK_UNKNOWN, id="track_name"),
             ArtistInfo(LBL_ARTIST_UNKNOWN, id="artist_name"),
-            AlbumInfo(LBL_ALBUM_UNKNOWN, id="album_name")
+            AlbumInfo(LBL_ALBUM_UNKNOWN, id="album_name"),
+            ProgressBar(id="progress_bar")
         )
 
 
@@ -193,7 +221,7 @@ class ContextSwitcher(ContentSwitcher):
         yield self.new_directory_browser(PATH_HOME)
         yield NowPlaying(id="now_playing")
 
-    def new_directory_browser(self, base_path: str) -> DirectoryBrowser:
+    def new_directory_browser(self, base_path: str) -> DirectoryBrowser:  # noqa
         return DirectoryBrowser(path=path.expanduser(base_path), id="directory_browser")
 
     def refresh_directory_browser(self, base_path: str):
@@ -256,6 +284,7 @@ def play_track(track: Track, loops: int = -1) -> None:
 
     pygame.mixer.init()
     pygame.mixer.music.load(track[TRACK_FILE_OFFSET])
+    pygame.mixer.music.rewind()  # We need this to get accurate timings.
     pygame.mixer.music.play(loops=loops)
 
 
@@ -289,7 +318,7 @@ class MusicPlayerApp(App):
     cwd: reactive[str] = reactive("./demo_music")
 
     # The list of current tracks.
-    tracks: reactive[list[tuple]] = reactive([])
+    tracks: reactive[list[Track]] = reactive([])
 
     # The current track.
     current_track: reactive[Track | None] = reactive(None)
@@ -305,6 +334,8 @@ class MusicPlayerApp(App):
     # The ID of the previous context widget.
     previous_context: str = "tracklist"
 
+    progress_timer: Timer = None
+
     # def watch_cwd(self) -> None:
     #     """Watch for changes to `cwd`."""
     #     log("CWD CHANGED")
@@ -317,15 +348,21 @@ class MusicPlayerApp(App):
 
     def watch_current_track(self) -> None:
         """Watch for changes to `current_track`."""
-        self.play_current_track()
+        if self.current_track:
+            self.play_current_track()
 
     def watch_current_track_index(self, previous_track_index: int, new_track_index: int) -> None:
         """Watch for changes to `current_track_index`."""
         self.previous_track_index = previous_track_index
         self.current_track = self.tracks[new_track_index]
-        # TODO This is likely to throw an out-of-bounds error if the current track
-        #      is the last track, I reckon.  Fix this.
-        self.next_track = self.tracks[new_track_index + 1]
+
+        # The next track is either the next track in the list, or the first track if we're at the end.
+        # TODO Add a separate playlist that is independent of the track list.  This would likely just be a
+        #      list of indices which is reduced when a track is played.
+        next_track: int = new_track_index + 1
+        if next_track > len(self.tracks):
+            next_track = 0
+        self.next_track = self.tracks[next_track]
 
     def set_playlist_current_icon(self, icon: str, row: int, previous_row: int = None) -> None:
         """Set the icon for the currently playing track in the playlist."""
@@ -337,7 +374,6 @@ class MusicPlayerApp(App):
     def play_current_track(self) -> None:
         """Play the current track."""
         self.play_track(self.current_track, self.next_track)
-        self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def compose(self) -> ComposeResult:
         """Render the music player."""
@@ -350,6 +386,8 @@ class MusicPlayerApp(App):
         # Scan for music in the current working directory.
         self.scan_track_directory()
         self.update_playlist()
+
+        self.progress_timer = self.set_interval(1 / 30, self.update_progress_bar, pause=False)
 
         # Focus the playlist
         self.focus_playlist()
@@ -392,9 +430,11 @@ class MusicPlayerApp(App):
         pygame.mixer.init()
         if is_playing():
             pause()
+            # self.progress_timer.pause()
             self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
         else:
             unpause()
+            # self.progress_timer.resume()
             self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def action_toggle_now_playing(self) -> None:
@@ -470,8 +510,11 @@ class MusicPlayerApp(App):
             self.stop_music()
 
         if track:
+            # self.progress_timer.reset()
+            # self.progress_timer.resume()
             play_track(track, self.get_loops())
             self.update_track_info_track(track)
+            self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
             if next_track:
                 queue_track(next_track)
 
@@ -524,8 +567,22 @@ class MusicPlayerApp(App):
 
     def stop_music(self):
         """Stop the music."""
+        # self.progress_timer.stop()
+
+        self.current_track = None
         self.update_track_info(None, None, None)
         stop_music()
+
+    def update_progress_bar(self):
+        log("UPDATING")
+        """Update the progress bar with the percentage of the track played."""
+        if self.current_track:
+            pygame.mixer.init()
+            progress_in_s: float = float(pygame.mixer.music.get_pos()) / 1000.0
+            track_length_in_s: float = self.current_track[TRACK_DURATION_OFFSET]
+            progress: float = (progress_in_s / track_length_in_s)
+            log(progress)
+            self.query_one("#progress_bar", ProgressBar).percent_complete = progress
 
     def get_playlist(self) -> DataTable:
         """Return the playlist widget."""
