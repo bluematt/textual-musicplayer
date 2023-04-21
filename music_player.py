@@ -5,7 +5,7 @@ import sys
 from os import walk, path, environ
 from pathlib import Path
 from random import shuffle
-from typing import ClassVar, Iterable
+from typing import ClassVar, Iterable, Optional
 
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
@@ -18,7 +18,7 @@ from textual.coordinate import Coordinate
 from textual.timer import Timer
 from textual.binding import Binding
 from textual.message import Message
-from textual.reactive import reactive
+from textual.reactive import reactive, Reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Center, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Button, Switch
@@ -31,22 +31,11 @@ from textual.widgets import Label, DataTable, ContentSwitcher, Placeholder, Dire
 environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "True"
 import pygame  # noqa: E402
 
-TrackType = TinyTag | ID3 | Ogg | Wave | Flac | Wma | MP4 | Aiff
-Track = tuple[str, ...]
+Track = TinyTag | ID3 | Ogg | Wave | Flac | Wma | MP4 | Aiff
+TrackPath = str
 
 # Path to binaries.
 PATH_DYLIBS: str = "./venv/lib/python3.7/site-packages/pygame/.dylibs"
-
-# Index of the title column of the Track tuple.
-TRACK_TITLE_OFFSET: int = 0
-# Index of the artist column of the Track tuple.
-TRACK_ARTIST_OFFSET: int = 1
-# Index of the album column of the Track tuple.
-TRACK_ALBUM_OFFSET: int = 2
-# Index of the duration column of the Track tuple.
-TRACK_DURATION_OFFSET: int = 3
-# Index of the file column of the Track tuple.
-TRACK_FILE_OFFSET: int = 5
 
 # The supported file types.
 # TODO Determine while audio file types are/can be supported.
@@ -111,7 +100,7 @@ class ProgressBar(Static):
         # TODO There seems to be a bug where the width is about 80-90% of
         #      the parent at 100% width.
 
-    percent_complete: reactive[float] = reactive(0.0)
+    percent_complete = Reactive(0.0)
 
     def compose(self) -> ComposeResult:
         yield self.ProgressBarTrack(id="progress_bar_track")
@@ -276,33 +265,51 @@ def is_playing() -> bool:
     return pygame.mixer.music.get_busy()
 
 
-def play_track(track: Track, loops: int = -1) -> None:
+def play_track(track_path: TrackPath, loops: int = -1) -> None:
     """Play a track."""
-    if not track or not track[TRACK_FILE_OFFSET]:
+    if not track_path:
         log("NO TRACK TO PLAY")
         return
 
     pygame.mixer.init()
-    pygame.mixer.music.load(track[TRACK_FILE_OFFSET])
+    pygame.mixer.music.load(track_path)
     pygame.mixer.music.rewind()  # We need this to get accurate timings.
     pygame.mixer.music.play(loops=loops)
 
 
-def queue_track(track: Track = None, loops: int = -1) -> None:
+def queue_track(track_path: TrackPath = None, loops: int = -1) -> None:
     """Queue a track for playback when the current track finishes."""
-    if not track or not track[TRACK_FILE_OFFSET]:
+    if not track_path:
         log("NO TRACK TO QUEUE")
         return
 
     pygame.mixer.init()
-    pygame.mixer.music.queue(track[TRACK_FILE_OFFSET], loops=loops)
+    pygame.mixer.music.queue(track_path, loops=loops)
+
+
+def get_files_in_directory(directory: str) -> list[TrackPath]:
+    """Returns the (sorted) list of files in the directory."""
+    if not path.exists(directory) or not path.isdir(directory):
+        raise FileNotFoundError
+
+    files = [
+        TrackPath(path.join(dir_path, f))
+        for (dir_path, _dir_names, filenames) in walk(directory)
+        for f in filenames if f.endswith(TRACK_EXT) and not f.startswith(".")
+    ]
+
+    files.sort()
+
+    return files
 
 
 class MusicPlayerApp(App):
     """A music player app."""
 
     TITLE = "tTunes"  # 😏
+
     CSS_PATH: ClassVar[CSSPathType | None] = "music_player.css"
+
     BINDINGS = [
         Binding("space", "toggle_play", SYM_PLAY_PAUSE),
         Binding("m", "toggle_mute", "Mute/Unmute"),
@@ -315,54 +322,42 @@ class MusicPlayerApp(App):
     ]
 
     # The current working directory (where music files are).
-    cwd: reactive[str] = reactive("./demo_music")
+    cwd = Reactive("./demo_music")
 
-    # The list of current tracks.
-    tracks: reactive[list[Track]] = reactive([])
+    # The list of available tracks.
+    tracks: Reactive[dict[TrackPath, Track]] = Reactive({})
 
-    # The current track.
-    current_track: reactive[Track | None] = reactive(None)
+    # The current playlist.
+    playlist: Reactive[list[TrackPath]] = Reactive([])
 
     # The index of the current track.
-    current_track_index: reactive[int] = reactive(0)
-
-    next_track: Track = None
+    current_track_index = Reactive(0)
 
     # The index of the previous track.
-    previous_track_index: int
+    previous_track_index: int = None
 
     # The ID of the previous context widget.
     previous_context: str = "tracklist"
 
+    # A timer used to perform time-based updates.
     progress_timer: Timer = None
 
-    # def watch_cwd(self) -> None:
-    #     """Watch for changes to `cwd`."""
-    #     log("CWD CHANGED")
-    #     self.scan_track_directory()
+    def watch_cwd(self, previous_cwd: str, new_cwd: str) -> None:
+        """Watch for changes to `cwd`."""
+        if previous_cwd != new_cwd:
+            log("CWD CHANGED")
+            # self.scan_track_directory()
 
     # def watch_tracks(self) -> None:
     #     """Watch for changes to `tracks`."""
     #     log("PLAYLIST UPDATED")
     #     self.update_track_list()
 
-    def watch_current_track(self) -> None:
-        """Watch for changes to `current_track`."""
-        if self.current_track:
-            self.play_current_track()
-
-    def watch_current_track_index(self, previous_track_index: int, new_track_index: int) -> None:
+    def watch_current_track_index(self, previous_track_index: int, _new_track_index: int) -> None:
         """Watch for changes to `current_track_index`."""
         self.previous_track_index = previous_track_index
-        self.current_track = self.tracks[new_track_index]
-
-        # The next track is either the next track in the list, or the first track if we're at the end.
-        # TODO Add a separate playlist that is independent of the track list.  This would likely just be a
-        #      list of indices which is reduced when a track is played.
-        next_track: int = new_track_index + 1
-        if next_track > len(self.tracks):
-            next_track = 0
-        self.next_track = self.tracks[next_track]
+        if is_playing():
+            self.play()
 
     def set_playlist_current_icon(self, icon: str, row: int, previous_row: int = None) -> None:
         """Set the icon for the currently playing track in the playlist."""
@@ -371,9 +366,9 @@ class MusicPlayerApp(App):
             playlist.update_cell_at(Coordinate(row=previous_row, column=0), "")
         playlist.update_cell_at(Coordinate(row=row, column=0), icon)
 
-    def play_current_track(self) -> None:
-        """Play the current track."""
-        self.play_track(self.current_track, self.next_track)
+    def get_next_track_index(self) -> int:
+        next_track_index: int = self.current_track_index + 1
+        return next_track_index if next_track_index < len(self.playlist) else 0
 
     def compose(self) -> ComposeResult:
         """Render the music player."""
@@ -384,32 +379,42 @@ class MusicPlayerApp(App):
     def on_mount(self) -> None:
         """Mount the application."""
         # Scan for music in the current working directory.
-        self.scan_track_directory()
-        self.update_playlist()
+        self.refresh_tracks()
+
+        self.focus_playlist()
 
         self.progress_timer = self.set_interval(1 / 30, self.update_progress_bar, pause=False)
 
-        # Focus the playlist
-        self.focus_playlist()
-
         # Set the current track to be the first track in the playlist.
-        # TODO Error handling for empty playlists.
-        self.current_track_index = 0
+        self.play()
 
-    def update_playlist(self) -> None:
+    def play(self):
+        """Play the current track."""
+        if len(self.playlist) <= 0:
+            self.current_track_index = 0
+            self.stop_music()
+            return
+
+        current_track_index: int = self.current_track_index
+        next_track_index: int = self.get_next_track_index()
+
+        self.play_track(self.playlist[current_track_index])
+        self.queue_track(self.playlist[next_track_index])
+
+    def update_playlist_datatable(self) -> None:
         """Update the playlist with the tracks from the current working directory."""
 
         # Create the visual data for the playlist.
         playlist_data = []
-        for track in self.tracks:
-            t = list(track[:5])
-            t[3] = Text(format_duration(t[3]), justify="right")
-            t.insert(0, "")
-            playlist_data.append(t)
+        for track_path in self.playlist:
+            track: Track = self.tracks[track_path]
+            track_row = [None, track.title, track.artist, track.album, track.duration, track.genre]
+            track_row[4] = Text(format_duration(track.duration), justify="right")
+            playlist_data.append(track_row)
 
         playlist: DataTable = self.get_playlist()
         playlist.clear(columns=True)
-        # TODO See if there is a way to fill the terminal with tables.
+        # TODO See if there is a way to expand a DataTable to full width.
         #      See: https://github.com/Textualize/textual/discussions/1942
         # TODO This can probably be optimised by laying out the shape
         #      of the grid in advance, and just refilling the data.
@@ -429,13 +434,19 @@ class MusicPlayerApp(App):
         """Toggle play/pause."""
         pygame.mixer.init()
         if is_playing():
-            pause()
-            # self.progress_timer.pause()
-            self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
+            self.pause()
         else:
-            unpause()
-            # self.progress_timer.resume()
-            self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
+            self.unpause()
+
+    def pause(self):
+        """Pause playback."""
+        pause()
+        self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
+
+    def unpause(self):
+        """Unpause playback."""
+        unpause()
+        self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def action_toggle_now_playing(self) -> None:
         """Toggle the 'now playing' context."""
@@ -464,9 +475,9 @@ class MusicPlayerApp(App):
         """Sort the tracks according to the current app state."""
         random_switch = self.query_one("#random_switch", Switch)
         if random_switch.value:
-            shuffle(self.tracks)
+            shuffle(self.playlist)
         else:
-            self.tracks.sort(key=lambda row: row[TRACK_FILE_OFFSET])
+            self.playlist.sort()
 
     def action_open_directory(self) -> None:
         """Open the directory_browser."""
@@ -479,44 +490,45 @@ class MusicPlayerApp(App):
 
     def scan_track_directory(self) -> None:
         """Scan the current working directory for music files."""
-        files = self.get_files_in_directory(self.cwd)
+        files = get_files_in_directory(self.cwd)
         self.update_tracks_from_files(files)
+
+    def create_playlist(self) -> None:
+        """Create a playlist for the currently available tracks."""
+        self.playlist = list(self.tracks.keys())
 
     def update_tracks_from_files(self, files: list) -> None:
         # Get track metadata from music files.
-        tracks: list[TrackType] = [TinyTag.get(f) for f in files]
+        tracks: list[Track] = [TinyTag.get(f) for f in files]
 
-        # Create a list of tuple(track info).
-        track_data: list[Track] = []
-        [track_data.append((t.title, t.artist, t.album, t.duration, t.genre, files[idx])) for
-         idx, t in enumerate(tracks)]
+        # Clear the existing list of tracks and create a new {TrackPath:Track} mapping.
+        self.tracks.clear()
+        [self.tracks.update({TrackPath(files[idx]): track}) for idx, track in enumerate(tracks)]
 
-        self.tracks = track_data
-        self.sort_tracks()
-
-    def update_track_info_track(self, track: Track) -> None:
+    def update_track_info_track(self, track_path: TrackPath) -> None:
         """Update track info with a track's info."""
-        self.update_track_info(track[TRACK_TITLE_OFFSET], track[TRACK_ARTIST_OFFSET], track[TRACK_ALBUM_OFFSET])
+        track: Track = self.tracks[track_path]
+        self.update_track_info(track.title, track.artist, track.album)
 
-    def update_track_info(self, title: str, artist: str, album: str):
+    def update_track_info(self, title: Optional[str], artist: Optional[str], album: Optional[str]):
         """Update the UI with details of the current track."""
         self.query_one("#track_name").title = title
         self.query_one("#artist_name").artist = artist
         self.query_one("#album_name").album = album
 
-    def play_track(self, track: Track, next_track: Track = None) -> None:
+    def play_track(self, track_path: TrackPath) -> None:
         """Play a track."""
         if is_playing():
             self.stop_music()
 
-        if track:
-            # self.progress_timer.reset()
-            # self.progress_timer.resume()
-            play_track(track, self.get_loops())
-            self.update_track_info_track(track)
+        if track_path:
+            play_track(track_path, self.get_loops())
+            self.update_track_info_track(track_path)
             self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
-            if next_track:
-                queue_track(next_track)
+
+    def queue_track(self, track_path: TrackPath) -> None:
+        if track_path:
+            queue_track(track_path)
 
     def get_loops(self) -> int:
         """Return how many times to loop a track, based on the repeat switch's state."""
@@ -544,7 +556,7 @@ class MusicPlayerApp(App):
 
         if event.switch.id == "random_switch":
             self.sort_tracks()
-            self.update_playlist()
+            self.update_playlist_datatable()
 
         # TODO Implement repeat.
         if event.switch.id == "repeat_switch":
@@ -554,35 +566,43 @@ class MusicPlayerApp(App):
         """Handler for selecting a row in the data table."""
         self.current_track_index = event.cursor_row
 
-    def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected):
+    def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected) -> None:
         """Handler for selecting a directory in the directory browser."""
-        files = self.get_files_in_directory(event.directory)
+        files = get_files_in_directory(event.directory)
         if len(files) <= 0:
             log(f"NO USABLE FILES IN DIRECTORY {event.directory}")
             return
 
-        self.stop_music()
+        was_playing: bool = is_playing()
+
+        if was_playing:
+            self.stop_music()
+
         self.set_working_directory(event.directory)
+        self.refresh_tracks()
         self.focus_playlist()
+
+        self.current_track_index = 0
 
     def stop_music(self):
         """Stop the music."""
-        # self.progress_timer.stop()
-
-        self.current_track = None
         self.update_track_info(None, None, None)
         stop_music()
 
-    def update_progress_bar(self):
-        log("UPDATING")
+    def update_progress_bar(self) -> None:
         """Update the progress bar with the percentage of the track played."""
-        if self.current_track:
+        progress = 0.0
+
+        if self.current_track_index:
+            track: Track = self.tracks[self.playlist[self.current_track_index]]
+            track_length_in_s: float = track.duration
+
             pygame.mixer.init()
             progress_in_s: float = float(pygame.mixer.music.get_pos()) / 1000.0
-            track_length_in_s: float = self.current_track[TRACK_DURATION_OFFSET]
+
             progress: float = (progress_in_s / track_length_in_s)
-            log(progress)
-            self.query_one("#progress_bar", ProgressBar).percent_complete = progress
+
+        self.query_one("#progress_bar", ProgressBar).percent_complete = progress
 
     def get_playlist(self) -> DataTable:
         """Return the playlist widget."""
@@ -601,23 +621,11 @@ class MusicPlayerApp(App):
     def set_working_directory(self, directory: str) -> None:
         """Sets the current working directory, rescans the files therein and updates the playlist."""
         self.cwd = directory
+
+    def refresh_tracks(self):
         self.scan_track_directory()
-        self.update_playlist()
-
-    def get_files_in_directory(self, directory: str) -> list[bytes | str]:
-        """Returns the list of files in the directory."""
-        if not path.exists(directory) or not path.isdir(directory):
-            raise FileNotFoundError
-
-        files = [
-            path.join(dir_path, f)
-            for (dir_path, _dir_names, filenames) in walk(directory)
-            for f in filenames if f.endswith(TRACK_EXT) and not f.startswith(".")
-        ]
-
-        files.sort()
-
-        return files
+        self.create_playlist()
+        self.update_playlist_datatable()
 
 
 if __name__ == "__main__":
