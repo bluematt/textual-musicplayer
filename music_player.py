@@ -7,8 +7,6 @@ from pathlib import Path
 from random import shuffle
 from typing import ClassVar, Iterable
 
-from textual.coordinate import Coordinate
-from textual.timer import Timer
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
@@ -16,6 +14,8 @@ from rich.text import Text  # noqa - required by textual
 from rich.console import RenderableType  # noqa - required by textual
 
 from textual import log, events
+from textual.coordinate import Coordinate
+from textual.timer import Timer
 from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import reactive
