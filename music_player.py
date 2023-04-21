@@ -117,7 +117,7 @@ class ProgressBar(Static):
         yield self.ProgressBarTrack(id="progress_bar_track")
 
     def watch_percent_complete(self):
-        """Watch `percent_complete`."""
+        """Watch for changes to `percent_complete`."""
         self.update_track_width(self.percent_complete * self.MAX_MULTIPLIER)
 
     def update_track_width(self, width: float):
