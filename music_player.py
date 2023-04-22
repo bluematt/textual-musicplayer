@@ -63,6 +63,8 @@ LBL_RANDOM: str = "Random"
 PATH_HOME: str = "~"
 PATH_ROOT: str = "/"
 
+FRAME_RATE: float = 1.0 / 60.0  # Hz
+
 
 class TitleInfo(Static):
     """The track title."""
@@ -114,6 +116,17 @@ class ProgressBar(Static):
         self.query_one("#progress_bar_track", self.ProgressBarTrack).styles.width = f"{width}%"
 
 
+class TrackProgress(Static):
+    """Display information about a track's progress."""
+
+    def compose(self) -> ComposeResult:
+        yield Horizontal(
+            Label(format_duration(0.0).rjust(10, '*'), id="track_position"),
+            ProgressBar(id="progress_bar"),
+            Label(format_duration(59999.0).ljust(10, '*'), id="track_length")
+        )
+
+
 class TrackInformation(Static):
     """The track information."""
 
@@ -122,7 +135,7 @@ class TrackInformation(Static):
             TitleInfo(LBL_TRACK_UNKNOWN, id="track_name"),
             ArtistInfo(LBL_ARTIST_UNKNOWN, id="artist_name"),
             AlbumInfo(LBL_ALBUM_UNKNOWN, id="album_name"),
-            ProgressBar(id="progress_bar")
+            TrackProgress(id="track_progress")
         )
 
 
@@ -231,7 +244,7 @@ class MusicPlayer(Static):
 def format_duration(duration: float) -> str:
     """Converts a duration in seconds into a minute/second string."""
     (m, s) = divmod(duration, 60.0)
-    return f"{int(m)}\u2032{int(s):02}\u2033"
+    return f"{int(m)}\u2032{int(s):02}\u2033"  # unicode prime/double prime resp.
 
 
 def stop_music() -> None:
@@ -383,7 +396,7 @@ class MusicPlayerApp(App):
 
         self.focus_playlist()
 
-        self.progress_timer = self.set_interval(1 / 30, self.update_progress_bar, pause=False)
+        self.progress_timer = self.set_interval(FRAME_RATE, self.update_progress_bar, pause=False)
 
         # Set the current track to be the first track in the playlist.
         self.play()
@@ -593,7 +606,7 @@ class MusicPlayerApp(App):
         """Update the progress bar with the percentage of the track played."""
         progress = 0.0
 
-        if self.current_track_index:
+        if self.current_track_index is not None:
             track: Track = self.tracks[self.playlist[self.current_track_index]]
             track_length_in_s: float = track.duration
 
@@ -603,6 +616,8 @@ class MusicPlayerApp(App):
             progress: float = (progress_in_s / track_length_in_s)
 
         self.query_one("#progress_bar", ProgressBar).percent_complete = progress
+        self.query_one("#track_position", Static).update(format_duration(progress_in_s))
+        self.query_one("#track_length", Static).update(format_duration(track_length_in_s))
 
     def get_playlist(self) -> DataTable:
         """Return the playlist widget."""

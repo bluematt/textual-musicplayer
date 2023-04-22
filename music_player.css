@@ -3,7 +3,7 @@ Screen {
 }
 
 TrackInformation {
-    height: 6;
+    height: 7;
     border: solid white;
     content-align: center top;
 }
@@ -36,7 +36,7 @@ ProgressBar {
     content-align: center middle;
     background: grey;
     height: 1;
-    width: 100vw;
+    width: 50vw;
 }
 
 ProgressBarTrack {
@@ -61,4 +61,25 @@ ProgressBarTrack {
     content-align: right middle;
     width: auto;
     padding: 1;
+}
+
+TrackProgress {
+    layout: horizontal;
+    margin-top: 1;
+}
+
+#progress_bar {
+    width: 3fr;
+}
+
+#track_position, #track_length {
+    width: 1fr;
+    margin-left: 1;
+    margin-right: 1;
+}
+#track_position {
+    content-align: right middle;
+}
+#track_length {
+    content-align: left middle;
 }
