@@ -94,13 +94,10 @@ class ProgressBar(Static):
     """A bar that tracks progress."""
 
     # The multiplier for `percent_complete` to fill up the bar's width.
-    # TODO Tweak this to fill it up properly, based on the TODO in `ProgressBarTrack`.
     MAX_MULTIPLIER: float = 100.0
 
     class ProgressBarTrack(Static):
         """The track inside the `ProgressBar` that tracks progress."""
-        # TODO There seems to be a bug where the width is about 80-90% of
-        #      the parent at 100% width.
 
     percent_complete = Reactive(0.0)
 
@@ -251,6 +248,7 @@ def stop_music() -> None:
     """Stop playback."""
     pygame.mixer.init()
     pygame.mixer.music.stop()
+    pygame.mixer.music.rewind()
     pygame.mixer.music.unload()
 
 
@@ -401,7 +399,7 @@ class MusicPlayerApp(App):
         # Set the current track to be the first track in the playlist.
         self.play()
 
-    def play(self):
+    def play(self) -> None:
         """Play the current track."""
         if len(self.playlist) <= 0:
             self.current_track_index = 0
@@ -451,12 +449,12 @@ class MusicPlayerApp(App):
         else:
             self.unpause()
 
-    def pause(self):
+    def pause(self) -> None:
         """Pause playback."""
         pause()
         self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
 
-    def unpause(self):
+    def unpause(self) -> None:
         """Unpause playback."""
         unpause()
         self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
@@ -484,7 +482,7 @@ class MusicPlayerApp(App):
         random_switch = self.query_one("#random_switch", Switch)
         random_switch.toggle()
 
-    def sort_tracks(self):
+    def sort_tracks(self) -> None:
         """Sort the tracks according to the current app state."""
         random_switch = self.query_one("#random_switch", Switch)
         if random_switch.value:
@@ -509,6 +507,8 @@ class MusicPlayerApp(App):
     def create_playlist(self) -> None:
         """Create a playlist for the currently available tracks."""
         self.playlist = list(self.tracks.keys())
+        self.previous_track_index = None
+        self.sort_tracks()
 
     def update_tracks_from_files(self, files: list) -> None:
         # Get track metadata from music files.
@@ -522,8 +522,9 @@ class MusicPlayerApp(App):
         """Update track info with a track's info."""
         track: Track = self.tracks[track_path]
         self.update_track_info(track.title, track.artist, track.album)
+        self.update_progress_bar()
 
-    def update_track_info(self, title: Optional[str], artist: Optional[str], album: Optional[str]):
+    def update_track_info(self, title: Optional[str], artist: Optional[str], album: Optional[str]) -> None:
         """Update the UI with details of the current track."""
         self.query_one("#track_name").title = title
         self.query_one("#artist_name").artist = artist
@@ -586,18 +587,16 @@ class MusicPlayerApp(App):
             log(f"NO USABLE FILES IN DIRECTORY {event.directory}")
             return
 
-        was_playing: bool = is_playing()
-
-        if was_playing:
-            self.stop_music()
+        self.stop_music()
 
         self.set_working_directory(event.directory)
         self.refresh_tracks()
         self.focus_playlist()
 
         self.current_track_index = 0
+        self.play()
 
-    def stop_music(self):
+    def stop_music(self) -> None:
         """Stop the music."""
         self.update_track_info(None, None, None)
         stop_music()
@@ -637,7 +636,8 @@ class MusicPlayerApp(App):
         """Sets the current working directory, rescans the files therein and updates the playlist."""
         self.cwd = directory
 
-    def refresh_tracks(self):
+    def refresh_tracks(self) -> None:
+        """Refresh the track list and regenerate playlists."""
         self.scan_track_directory()
         self.create_playlist()
         self.update_playlist_datatable()
@@ -645,6 +645,7 @@ class MusicPlayerApp(App):
 
 if __name__ == "__main__":
     # Add path to the dynamic libraries
+    # TODO Is this actually required, or are libraries already on the path?
     sys.path.append(PATH_DYLIBS)
 
     # Initialize pygame for music playback.
