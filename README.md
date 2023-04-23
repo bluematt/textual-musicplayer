@@ -4,7 +4,7 @@ A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/
 
 ![screenshot.png](screenshot.png)
 
-Version 0.0.0.0.0.0.2-prealpha (not even joking—this is a learning experience for me, so the code will *very*
+Version 0.0.0.0.0.0.3-prealpha (not even joking—this is a learning experience for me, so the code will *very*
 unoptimised).
 
 **This is very much a WIP. Use at your own risk.**
@@ -36,13 +36,13 @@ $ textual run --dev music_player.py
 
 - [x] play `mp3` music files
 - [x] allow the user to select the music source directory (duh!)
+- [x] add support for `ogg` 
 - [x] make the bloody thing work!
-- [ ] make the bloody thing work better!
-- [ ] see if I can work out how reactivity, events, widgets, etc. actually work (getting there!)
+- [x] make the bloody thing work better!
+- [ ] make the bloody thing work even better!
 - [ ] add support for `mp4`, `m4a`, `ogg` and/or `flac` files :-)
 - [ ] clean up the UI (I'm looking at you, footer!)
-- [ ] use `session.yaml` (or something similar maybe) to record session info (current track, position, volume, etc.) so
-  that you can start where you left off last time (if one was so inclined)
+- [ ] record session info (current track, position, volume, etc.) so that playback starts where you left off last time
 - [ ] maybe - drag/drop source folder?
 - [ ] maybe - "now playing" with [chonky embedded album artwork](https://github.com/darrenburns/rich-pixels)? (wouldn't
   that be neat?!)
