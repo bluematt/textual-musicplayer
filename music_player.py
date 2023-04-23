@@ -40,9 +40,9 @@ PATH_DYLIBS: str = "./venv/lib/python3.7/site-packages/pygame/.dylibs"
 # The supported file types.
 # TODO Determine while audio file types are/can be supported.
 TRACK_EXT: tuple[str, ...] = (".mp3",
+                              ".ogg",
                               # ".mp4",
                               # ".m4a",
-                              # ".ogg",
                               # ".flac"
                               )
 
@@ -54,9 +54,9 @@ SYM_RANDOM: str = "\U0001F500"  # 🔀
 SYM_SPEAKER: str = "\U0001F508"  # 🔈
 SYM_SPEAKER_MUTED: str = "\U0001F507"  # 🔇
 
-LBL_TRACK_UNKNOWN: str = "<unknown track>"
-LBL_ARTIST_UNKNOWN: str = "<unknown artist>"
-LBL_ALBUM_UNKNOWN: str = "<unknown album>"
+TRACK_UNKNOWN: str = "<unknown track>"
+ARTIST_UNKNOWN: str = "<unknown artist>"
+ALBUM_UNKNOWN: str = "<unknown album>"
 LBL_REPEAT: str = "Repeat"
 LBL_RANDOM: str = "Random"
 
@@ -64,30 +64,6 @@ PATH_HOME: str = "~"
 PATH_ROOT: str = "/"
 
 FRAME_RATE: float = 1.0 / 60.0  # Hz
-
-
-class TitleInfo(Static):
-    """The track title."""
-    title: reactive[str] = reactive(LBL_TRACK_UNKNOWN)
-
-    def render(self) -> RenderableType:
-        return f"[bold]{self.title}[/]" if self.title else f"[bold]{LBL_TRACK_UNKNOWN}[/]"
-
-
-class ArtistInfo(Static):
-    """The track artist."""
-    artist: reactive[str] = reactive(LBL_ARTIST_UNKNOWN)
-
-    def render(self) -> RenderableType:
-        return f"{self.artist}" if self.artist else LBL_ARTIST_UNKNOWN
-
-
-class AlbumInfo(Static):
-    """The track album."""
-    album: reactive[str] = reactive(LBL_ALBUM_UNKNOWN)
-
-    def render(self) -> RenderableType:
-        return f"[italic]{self.album}[/]" if self.album else f"[italic]{LBL_ALBUM_UNKNOWN}[/]"
 
 
 class ProgressBar(Static):
@@ -102,7 +78,7 @@ class ProgressBar(Static):
     percent_complete = Reactive(0.0)
 
     def compose(self) -> ComposeResult:
-        yield self.ProgressBarTrack(id="progress_bar_track")
+        yield self.ProgressBarTrack("0.0", id="progress_bar_track")
 
     def watch_percent_complete(self):
         """Watch for changes to `percent_complete`."""
@@ -110,7 +86,9 @@ class ProgressBar(Static):
 
     def update_track_width(self, width: float):
         """Update the width of the track as a percentage."""
-        self.query_one("#progress_bar_track", self.ProgressBarTrack).styles.width = f"{width}%"
+        # TEMP Display the progress as a percentage.
+        # self.query_one("#progress_bar_track", self.ProgressBarTrack).update(f"{str(int(width))}%")
+        self.query_one("#progress_bar_track", self.ProgressBarTrack).styles.width = f"{str(width)}%"
 
 
 class TrackProgress(Static):
@@ -118,9 +96,9 @@ class TrackProgress(Static):
 
     def compose(self) -> ComposeResult:
         yield Horizontal(
-            Label(format_duration(0.0).rjust(10, '*'), id="track_position"),
+            Label(format_duration(0.0).rjust(10), id="track_position"),
             ProgressBar(id="progress_bar"),
-            Label(format_duration(59999.0).ljust(10, '*'), id="track_length")
+            Label(format_duration(59999.0).ljust(10), id="track_length")
         )
 
 
@@ -129,9 +107,9 @@ class TrackInformation(Static):
 
     def compose(self) -> ComposeResult:
         yield Vertical(
-            TitleInfo(LBL_TRACK_UNKNOWN, id="track_name"),
-            ArtistInfo(LBL_ARTIST_UNKNOWN, id="artist_name"),
-            AlbumInfo(LBL_ALBUM_UNKNOWN, id="album_name"),
+            Static(TRACK_UNKNOWN, id="track_name"),
+            Static(ARTIST_UNKNOWN, id="artist_name"),
+            Static(ALBUM_UNKNOWN, id="album_name"),
             TrackProgress(id="track_progress")
         )
 
@@ -288,16 +266,6 @@ def play_track(track_path: TrackPath, loops: int = -1) -> None:
     pygame.mixer.music.play(loops=loops)
 
 
-def queue_track(track_path: TrackPath = None, loops: int = -1) -> None:
-    """Queue a track for playback when the current track finishes."""
-    if not track_path:
-        log("NO TRACK TO QUEUE")
-        return
-
-    pygame.mixer.init()
-    pygame.mixer.music.queue(track_path, loops=loops)
-
-
 def get_files_in_directory(directory: str) -> list[TrackPath]:
     """Returns the (sorted) list of files in the directory."""
     if not path.exists(directory) or not path.isdir(directory):
@@ -342,10 +310,10 @@ class MusicPlayerApp(App):
     playlist: Reactive[list[TrackPath]] = Reactive([])
 
     # The index of the current track.
-    current_track_index = Reactive(0)
+    current_track_index: Reactive[Optional[int]] = Reactive(0)
 
     # The index of the previous track.
-    previous_track_index: int = None
+    previous_track_index: Optional[int] = None
 
     # The ID of the previous context widget.
     previous_context: str = "tracklist"
@@ -353,22 +321,17 @@ class MusicPlayerApp(App):
     # A timer used to perform time-based updates.
     progress_timer: Timer = None
 
-    def watch_cwd(self, previous_cwd: str, new_cwd: str) -> None:
-        """Watch for changes to `cwd`."""
-        if previous_cwd != new_cwd:
-            log("CWD CHANGED")
-            # self.scan_track_directory()
-
-    # def watch_tracks(self) -> None:
-    #     """Watch for changes to `tracks`."""
-    #     log("PLAYLIST UPDATED")
-    #     self.update_track_list()
-
-    def watch_current_track_index(self, previous_track_index: int, _new_track_index: int) -> None:
+    def watch_current_track_index(self, previous_track_index: int, new_track_index: int) -> None:
         """Watch for changes to `current_track_index`."""
         self.previous_track_index = previous_track_index
-        if is_playing():
-            self.play()
+        self.current_track_index = new_track_index
+
+        if self.current_track_index is None:
+            self.previous_track_index = None
+            self.stop_music()
+            return
+
+        self.play()
 
     def set_playlist_current_icon(self, icon: str, row: int, previous_row: int = None) -> None:
         """Set the icon for the currently playing track in the playlist."""
@@ -389,28 +352,21 @@ class MusicPlayerApp(App):
 
     def on_mount(self) -> None:
         """Mount the application."""
-        # Scan for music in the current working directory.
         self.refresh_tracks()
-
         self.focus_playlist()
 
-        self.progress_timer = self.set_interval(FRAME_RATE, self.update_progress_bar, pause=False)
-
-        # Set the current track to be the first track in the playlist.
+        self.progress_timer = self.set_interval(FRAME_RATE, self.update_progress, pause=False)
         self.play()
 
     def play(self) -> None:
         """Play the current track."""
         if len(self.playlist) <= 0:
-            self.current_track_index = 0
-            self.stop_music()
+            self.current_track_index = None
+
+        if self.current_track_index is None:
             return
 
-        current_track_index: int = self.current_track_index
-        next_track_index: int = self.get_next_track_index()
-
-        self.play_track(self.playlist[current_track_index])
-        self.queue_track(self.playlist[next_track_index])
+        self.play_track(self.playlist[self.current_track_index])
 
     def update_playlist_datatable(self) -> None:
         """Update the playlist with the tracks from the current working directory."""
@@ -507,7 +463,6 @@ class MusicPlayerApp(App):
     def create_playlist(self) -> None:
         """Create a playlist for the currently available tracks."""
         self.playlist = list(self.tracks.keys())
-        self.previous_track_index = None
         self.sort_tracks()
 
     def update_tracks_from_files(self, files: list) -> None:
@@ -522,27 +477,20 @@ class MusicPlayerApp(App):
         """Update track info with a track's info."""
         track: Track = self.tracks[track_path]
         self.update_track_info(track.title, track.artist, track.album)
-        self.update_progress_bar()
+        self.update_progress()
 
     def update_track_info(self, title: Optional[str], artist: Optional[str], album: Optional[str]) -> None:
         """Update the UI with details of the current track."""
-        self.query_one("#track_name").title = title
-        self.query_one("#artist_name").artist = artist
-        self.query_one("#album_name").album = album
+        self.query_one("#track_name", Static).update(f"[bold]{title}[/]" if title else f"[bold]{TRACK_UNKNOWN}[/]")
+        self.query_one("#artist_name", Static).update(f"{artist}" if artist else ARTIST_UNKNOWN)
+        self.query_one("#album_name", Static).update(f"[italic]{album}[/]" if album else f"[italic]{ALBUM_UNKNOWN}[/]")
 
     def play_track(self, track_path: TrackPath) -> None:
         """Play a track."""
-        if is_playing():
-            self.stop_music()
-
         if track_path:
             play_track(track_path, self.get_loops())
             self.update_track_info_track(track_path)
             self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
-
-    def queue_track(self, track_path: TrackPath) -> None:
-        if track_path:
-            queue_track(track_path)
 
     def get_loops(self) -> int:
         """Return how many times to loop a track, based on the repeat switch's state."""
@@ -566,8 +514,6 @@ class MusicPlayerApp(App):
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Handler for switch changes."""
-        pass
-
         if event.switch.id == "random_switch":
             self.sort_tracks()
             self.update_playlist_datatable()
@@ -594,29 +540,40 @@ class MusicPlayerApp(App):
         self.focus_playlist()
 
         self.current_track_index = 0
+        self.previous_track_index = None
         self.play()
 
     def stop_music(self) -> None:
         """Stop the music."""
         self.update_track_info(None, None, None)
+        self.update_progress()
         stop_music()
 
-    def update_progress_bar(self) -> None:
-        """Update the progress bar with the percentage of the track played."""
-        progress = 0.0
+    def update_progress(self) -> None:
+        """Keep track of what's happening."""
+        progress_in_s: float = 0.0
+        track_length_in_s: float = 0.0
+        progress: float = 0.0
 
         if self.current_track_index is not None:
-            track: Track = self.tracks[self.playlist[self.current_track_index]]
-            track_length_in_s: float = track.duration
-
             pygame.mixer.init()
-            progress_in_s: float = float(pygame.mixer.music.get_pos()) / 1000.0
 
-            progress: float = (progress_in_s / track_length_in_s)
+            track: Track = self.tracks[self.playlist[self.current_track_index]]
+
+            track_length_in_s = track.duration
+            progress_in_s = float(pygame.mixer.music.get_pos()) / 1000.0
+
+            progress = (progress_in_s / track_length_in_s)
+
+        if progress_in_s < 0.0 or progress >= 1.0:  # progress_in_s < 0.0 when pygame detects that track has ended.
+            self.advance_to_next_track()
 
         self.query_one("#progress_bar", ProgressBar).percent_complete = progress
         self.query_one("#track_position", Static).update(format_duration(progress_in_s))
         self.query_one("#track_length", Static).update(format_duration(track_length_in_s))
+
+    def advance_to_next_track(self):
+        self.current_track_index = self.get_next_track_index()
 
     def get_playlist(self) -> DataTable:
         """Return the playlist widget."""
@@ -638,6 +595,7 @@ class MusicPlayerApp(App):
 
     def refresh_tracks(self) -> None:
         """Refresh the track list and regenerate playlists."""
+        self.previous_track_index = None
         self.scan_track_directory()
         self.create_playlist()
         self.update_playlist_datatable()

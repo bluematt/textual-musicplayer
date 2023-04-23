@@ -28,7 +28,7 @@ DataTable {
     width: 100vw;
 }
 
-TitleInfo, ArtistInfo, AlbumInfo {
+#track_name, #artist_name, #album_name {
     content-align: center middle;
 }
 
@@ -40,6 +40,7 @@ ProgressBar {
 }
 
 ProgressBarTrack {
+    color: red;
     background: white;
     height: 1;
     width: 100%;
