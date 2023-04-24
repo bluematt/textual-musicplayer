@@ -154,7 +154,11 @@ class DirectoryBrowser(DirectoryTree):
 
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
         """Filter paths to non-hidden directories only."""
-        return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
+        try:
+            return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
+        except:
+            self.app.set_status(f"Cannot read directory", bgcolor="red")
+            return []
 
     def on_tree_node_selected(self, event: DirectoryBrowser.NodeSelected) -> None:
         """Handler for selecting a directory in the directory browser."""
@@ -544,6 +548,7 @@ class MusicPlayerApp(App):
     def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected) -> None:
         """Handler for selecting a directory in the directory browser."""
         files = get_files_in_directory(event.directory)
+
         if len(files) <= 0:
             log(f"NO USABLE FILES IN DIRECTORY {event.directory}")
             return
@@ -627,8 +632,10 @@ class MusicPlayerApp(App):
         self.create_playlist()
         self.update_playlist_datatable()
 
-    def set_status(self, message: str):
-        self.query_one('#status', Static).update(message)
+    def set_status(self, message: str, bgcolor: str = "darkgreen"):
+        status = self.query_one('#status', Static)
+        status.update(message)
+        status.styles.background = bgcolor
 
 
 if __name__ == "__main__":
