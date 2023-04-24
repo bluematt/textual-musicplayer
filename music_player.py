@@ -18,7 +18,7 @@ from textual.coordinate import Coordinate
 from textual.timer import Timer
 from textual.binding import Binding
 from textual.message import Message
-from textual.reactive import reactive, Reactive
+from textual.reactive import Reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Header, Footer, Static, Button, Switch, Label
@@ -39,8 +39,7 @@ PATH_DYLIBS: str = "./venv/lib/python3.7/site-packages/pygame/.dylibs"
 
 # The supported file types.
 # TODO Determine while audio file types are/can be supported.
-TRACK_EXT: tuple[str, ...] = (".mp3",
-                              ".ogg",
+TRACK_EXT: tuple[str, ...] = (".mp3", ".ogg",
                               # ".mp4",
                               # ".m4a",
                               # ".flac"
@@ -70,7 +69,7 @@ class ProgressBar(Static):
     """A bar that tracks progress."""
 
     # The multiplier for `percent_complete` to fill up the bar's width.
-    MAX_MULTIPLIER: float = 100.0
+    PERCENTAGE_MULTIPLIER: float = 100.0
 
     class ProgressBarTrack(Static):
         """The track inside the `ProgressBar` that tracks progress."""
@@ -82,7 +81,7 @@ class ProgressBar(Static):
 
     def watch_percent_complete(self):
         """Watch for changes to `percent_complete`."""
-        self.update_track_width(self.percent_complete * self.MAX_MULTIPLIER)
+        self.update_track_width(self.percent_complete * self.PERCENTAGE_MULTIPLIER)
 
     def update_track_width(self, width: float):
         """Update the width of the track as a percentage."""
@@ -183,9 +182,9 @@ class NowPlaying(Placeholder):
     """Display what is currently playing."""
     BINDINGS = []
 
-    title: reactive[str] = reactive("")
-    artist: reactive[str] = reactive("")
-    album: reactive[str] = reactive("")
+    title = Reactive("")
+    artist = Reactive("")
+    album = Reactive("")
     artwork = None
 
 
