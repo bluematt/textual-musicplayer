@@ -7,7 +7,6 @@ from pathlib import Path
 from random import shuffle
 from typing import ClassVar, Iterable, Optional
 
-from textual.widget import Widget
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
