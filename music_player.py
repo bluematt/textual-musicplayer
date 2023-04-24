@@ -365,13 +365,17 @@ class MusicPlayerApp(App):
 
     def play(self) -> None:
         """Play the current track."""
+        # If no tracks, no current track.
         if len(self.playlist) <= 0:
             self.current_track_index = None
 
+        # If no current track, bail.
         if self.current_track_index is None:
             return
 
-        self.play_track(self.playlist[self.current_track_index])
+        track: Track = self.get_track(self.current_track_index)
+        self.set_status(f"{SYM_PLAY}  [bold]{track.title}[/] by {track.artist}")
+        self.play_track(self.get_track_path(self.current_track_index))
 
     def update_playlist_datatable(self) -> None:
         """Update the playlist with the tracks from the current working directory."""
@@ -453,11 +457,17 @@ class MusicPlayerApp(App):
     def pause(self) -> None:
         """Pause playback."""
         pause()
+        track: Track = self.get_track(self.current_track_index)
+        self.remove_class("playing")
+        self.set_status(f"{SYM_PAUSE}  [bold]{track.title}[/] by {track.artist}")
         self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
 
     def unpause(self) -> None:
         """Unpause playback."""
         unpause()
+        track: Track = self.get_track(self.current_track_index)
+        self.add_class("playing")
+        self.set_status(f"{SYM_PLAY}  [bold]{track.title}[/] by {track.artist}")
         self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def sort_tracks(self) -> None:
@@ -502,6 +512,7 @@ class MusicPlayerApp(App):
         """Play a track."""
         if track_path:
             play_track(track_path, self.get_loops())
+            self.add_class("playing")
             self.update_track_info_track(track_path)
             self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
@@ -528,7 +539,7 @@ class MusicPlayerApp(App):
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Handler for switch changes."""
         if event.switch.id == "random_switch":
-            current_track_path: TrackPath = self.playlist[self.current_track_index]
+            current_track_path: TrackPath = self.get_track_path(self.current_track_index)
             self.sort_tracks()
             self.update_playlist_datatable()
             self.current_track_index = self.playlist.index(current_track_path)
@@ -560,6 +571,7 @@ class MusicPlayerApp(App):
 
     def stop_music(self) -> None:
         """Stop the music."""
+        self.remove_class("playing")
         self.set_status(f"Stopped")
         self.update_track_info(None, None, None)
         self.update_progress()
@@ -571,31 +583,34 @@ class MusicPlayerApp(App):
         track_length_in_s: float = 0.0
         progress: float = 0.0
 
+        # Update track progress if we have a track.
         if self.current_track_index is not None:
-            pygame.mixer.init()
-
-            track: Track = self.tracks[self.playlist[self.current_track_index]]
-
-            track_length_in_s = track.duration
-            # get_pos() returns a value in milliseconds
-            progress_in_s = float(pygame.mixer.music.get_pos()) / 1000.0
-
+            track_length_in_s, progress_in_s = self.get_track_progress(self.current_track_index)
             progress = (progress_in_s / track_length_in_s)
-            self.update_status_playing(track)
 
+        # Has the track finished?
+        # pygame.mixer.music.get_pos() can return -0.01 if pygame detects that the track has finished playing.
         if progress_in_s < 0.0 or progress >= 1.0:
-            # progress_in_s < 0.0 is possible when pygame detects that track has ended.
             self.advance_to_next_track()
 
         self.query_one("#progress_bar", ProgressBar).percent_complete = progress
         self.query_one("#track_position", Static).update(format_duration(progress_in_s))
         self.query_one("#track_length", Static).update(format_duration(track_length_in_s))
 
-    def update_status_playing(self, track: Track) -> None:
-        if is_playing():
-            self.set_status(f"{SYM_PLAY}  [bold]{track.title}[/] by {track.artist}")
-        else:
-            self.set_status(f"{SYM_PAUSE}  [bold]{track.title}[/] by {track.artist}")
+    def get_track_progress(self, track_index: int) -> tuple[float, float]:
+        pygame.mixer.init()
+        track: Track = self.get_track(self.current_track_index)
+        track_length_in_s: float = track.duration
+        # get_pos() returns a value in milliseconds
+        progress_in_s = float(pygame.mixer.music.get_pos()) / 1000.0
+
+        return track_length_in_s, progress_in_s
+
+    def get_track_path(self, index: int) -> str:
+        return self.playlist[index]
+
+    def get_track(self, index: int) -> Track:
+        return self.tracks[self.get_track_path(index)]
 
     def advance_to_next_track(self):
         self.set_status("Next track...")
