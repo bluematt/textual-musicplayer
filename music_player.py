@@ -512,10 +512,10 @@ class MusicPlayerApp(App):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handler for button presses."""
         if event.button.id == "play_button":
-            unpause()
+            self.unpause()
 
         if event.button.id == "pause_button":
-            pause()
+            self.pause()
 
         self.focus_playlist()
 

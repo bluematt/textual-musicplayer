@@ -98,3 +98,16 @@ Checkbox {
     color: silver;
     padding: 0 1;
 }
+
+#play_button {
+    display: block;
+}
+.playing #play_button {
+    display: none;
+}
+#pause_button {
+    display: none;
+}
+.playing #pause_button {
+    display: block;
+}
