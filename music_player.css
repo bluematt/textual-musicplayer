@@ -9,8 +9,10 @@ TrackInformation {
 }
 
 PlayerControls {
+    layout: horizontal;
     height: 3;
-    content-align: center top;
+    width: 100vw;
+    align-horizontal: center;
 }
 
 TrackList {
@@ -83,4 +85,9 @@ TrackProgress {
 }
 #track_length {
     content-align: left middle;
+}
+#status {
+    background: darkgreen;
+    color: silver;
+    padding: 0 1;
 }

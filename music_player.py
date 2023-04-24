@@ -20,9 +20,9 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import reactive, Reactive
 from textual.app import App, ComposeResult, CSSPathType
-from textual.containers import Horizontal, Center, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Button, Switch
-from textual.widgets import Label, DataTable, ContentSwitcher, Placeholder, DirectoryTree
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.widgets import Header, Footer, Static, Button, Switch, Label
+from textual.widgets import DataTable, ContentSwitcher, Placeholder, DirectoryTree
 
 # Hide the Pygame prompts from the terminal.
 # Imported libraries should *not* dump to the terminal...
@@ -78,7 +78,7 @@ class ProgressBar(Static):
     percent_complete = Reactive(0.0)
 
     def compose(self) -> ComposeResult:
-        yield self.ProgressBarTrack("0.0", id="progress_bar_track")
+        yield self.ProgressBarTrack("", id="progress_bar_track")
 
     def watch_percent_complete(self):
         """Watch for changes to `percent_complete`."""
@@ -118,20 +118,18 @@ class PlayerControls(Static):
     """The music controls."""
 
     def compose(self) -> ComposeResult:
-        yield Center(Horizontal(
-            Button(SYM_PLAY, id="play_button"),
-            Button(SYM_PAUSE, id="pause_button"),
-            Horizontal(
-                Label(SYM_REPEAT + LBL_REPEAT, classes="label"),
-                Switch(value=False, id="repeat_switch", disabled=True),
-                classes="container",
-            ),
-            Horizontal(
-                Label(SYM_RANDOM + LBL_RANDOM, classes="label"),
-                Switch(value=False, id="random_switch"),
-                classes="container",
-            ),
-        ))
+        yield Button(SYM_PLAY, id="play_button")
+        yield Button(SYM_PAUSE, id="pause_button")
+        yield Horizontal(
+            Label(SYM_REPEAT + LBL_REPEAT, classes="label"),
+            Switch(value=False, id="repeat_switch", disabled=True),
+            classes="container",
+        )
+        yield Horizontal(
+            Label(SYM_RANDOM + LBL_RANDOM, classes="label"),
+            Switch(value=False, id="random_switch"),
+            classes="container",
+        )
 
 
 class TrackList(VerticalScroll):
@@ -214,6 +212,7 @@ class MusicPlayer(Static):
         yield TrackInformation()
         yield PlayerControls()
         yield ContextSwitcher(id="context", initial="tracklist")
+        yield Static("Loading...", id="status")
 
 
 def format_duration(duration: float) -> str:
@@ -292,12 +291,15 @@ class MusicPlayerApp(App):
     BINDINGS = [
         Binding("space", "toggle_play", SYM_PLAY_PAUSE),
         Binding("m", "toggle_mute", "Mute/Unmute"),
-        Binding("d", "toggle_dark", "Toggle dark mode"),
+        Binding("d", "toggle_dark", "Toggle dark mode", show=False),
         Binding("o", "open_directory", "Open directory"),
         Binding("r", "toggle_repeat", "Toggle repeat", show=False),
         Binding("m", "toggle_random", "Toggle random", show=False),
         Binding("p", "toggle_now_playing", "Now playing"),
         Binding("q", "quit", "Quit", show=False),
+        Binding("backslash", "restart_playlist", "Restart playlist", show=False),
+        Binding("left_square_bracket", "previous", "Previous track", show=False),
+        Binding("right_square_bracket", "next_track", "Next track", show=False),
     ]
 
     # The current working directory (where music files are).
@@ -343,6 +345,10 @@ class MusicPlayerApp(App):
     def get_next_track_index(self) -> int:
         next_track_index: int = self.current_track_index + 1
         return next_track_index if next_track_index < len(self.playlist) else 0
+
+    def get_previous_track_index(self) -> int:
+        previous_track_index: int = self.current_track_index - 1
+        return previous_track_index if previous_track_index < len(self.playlist) else len(self.playlist) - 1
 
     def compose(self) -> ComposeResult:
         """Render the music player."""
@@ -405,18 +411,8 @@ class MusicPlayerApp(App):
         else:
             self.unpause()
 
-    def pause(self) -> None:
-        """Pause playback."""
-        pause()
-        self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
-
-    def unpause(self) -> None:
-        """Unpause playback."""
-        unpause()
-        self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
-
     def action_toggle_now_playing(self) -> None:
-        """Toggle the 'now playing' context."""
+        """Action to toggle the 'now playing' context."""
         current_context: str = self.query_one("#context", ContentSwitcher).current
         if current_context == "now_playing":
             self.query_one("#context", ContentSwitcher).current = self.previous_context
@@ -429,14 +425,43 @@ class MusicPlayerApp(App):
         toggle_mute()
 
     def action_toggle_repeat(self) -> None:
-        """Toggle repeating."""
+        """Action to toggle repeating."""
         repeat_switch = self.query_one("#repeat_switch", Switch)
         repeat_switch.toggle()
 
     def action_toggle_random(self) -> None:
-        """Toggle playlist randomisation."""
+        """Action to toggle playlist randomisation."""
         random_switch = self.query_one("#random_switch", Switch)
         random_switch.toggle()
+
+    def action_open_directory(self) -> None:
+        """Action to open the directory_browser."""
+        self.set_context("directory_browser")
+        self.set_focus(self.query_one("#directory_browser", DirectoryBrowser))
+        # TODO Can we highlight the cwd in this context?
+
+    def action_close_directory(self) -> None:
+        """Action to close the directory_browser."""
+        self.query_one("#context").current = "tracklist"
+
+    def action_restart_playlist(self) -> None:
+        self.current_track_index = 0
+
+    def action_previous_track(self) -> None:
+        self.current_track_index = self.get_previous_track_index()
+
+    def action_next_track(self) -> None:
+        self.current_track_index = self.get_next_track_index()
+
+    def pause(self) -> None:
+        """Pause playback."""
+        pause()
+        self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
+
+    def unpause(self) -> None:
+        """Unpause playback."""
+        unpause()
+        self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
 
     def sort_tracks(self) -> None:
         """Sort the tracks according to the current app state."""
@@ -445,15 +470,6 @@ class MusicPlayerApp(App):
             shuffle(self.playlist)
         else:
             self.playlist.sort()
-
-    def action_open_directory(self) -> None:
-        """Open the directory_browser."""
-        self.set_context("directory_browser")
-        self.set_focus(self.query_one("#directory_browser", DirectoryBrowser))
-
-    def action_close_directory(self) -> None:
-        """Close the directory_browser."""
-        self.query_one("#context").current = "tracklist"
 
     def scan_track_directory(self) -> None:
         """Scan the current working directory for music files."""
@@ -535,7 +551,7 @@ class MusicPlayerApp(App):
 
         self.stop_music()
 
-        self.set_working_directory(event.directory)
+        self.cwd = event.directory
         self.refresh_tracks()
         self.focus_playlist()
 
@@ -545,6 +561,7 @@ class MusicPlayerApp(App):
 
     def stop_music(self) -> None:
         """Stop the music."""
+        self.set_status(f"Stopped")
         self.update_track_info(None, None, None)
         self.update_progress()
         stop_music()
@@ -561,18 +578,28 @@ class MusicPlayerApp(App):
             track: Track = self.tracks[self.playlist[self.current_track_index]]
 
             track_length_in_s = track.duration
+            # get_pos() returns a value in milliseconds
             progress_in_s = float(pygame.mixer.music.get_pos()) / 1000.0
 
             progress = (progress_in_s / track_length_in_s)
+            self.update_status_playing(track)
 
-        if progress_in_s < 0.0 or progress >= 1.0:  # progress_in_s < 0.0 when pygame detects that track has ended.
+        if progress_in_s < 0.0 or progress >= 1.0:
+            # progress_in_s < 0.0 is possible when pygame detects that track has ended.
             self.advance_to_next_track()
 
         self.query_one("#progress_bar", ProgressBar).percent_complete = progress
         self.query_one("#track_position", Static).update(format_duration(progress_in_s))
         self.query_one("#track_length", Static).update(format_duration(track_length_in_s))
 
+    def update_status_playing(self, track: Track) -> None:
+        if is_playing():
+            self.set_status(f"{SYM_PLAY}  [bold]{track.title}[/] by {track.artist}")
+        else:
+            self.set_status(f"{SYM_PAUSE}  [bold]{track.title}[/] by {track.artist}")
+
     def advance_to_next_track(self):
+        self.set_status("Next track...")
         self.current_track_index = self.get_next_track_index()
 
     def get_playlist(self) -> DataTable:
@@ -589,16 +616,16 @@ class MusicPlayerApp(App):
         self.previous_context = self.query_one("#context", ContentSwitcher).current
         self.query_one("#context", ContentSwitcher).current = context
 
-    def set_working_directory(self, directory: str) -> None:
-        """Sets the current working directory, rescans the files therein and updates the playlist."""
-        self.cwd = directory
-
     def refresh_tracks(self) -> None:
         """Refresh the track list and regenerate playlists."""
+        self.set_status("Refreshing playlist...")
         self.previous_track_index = None
         self.scan_track_directory()
         self.create_playlist()
         self.update_playlist_datatable()
+
+    def set_status(self, message: str):
+        self.query_one('#status', Static).update(message)
 
 
 if __name__ == "__main__":
