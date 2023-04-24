@@ -4,8 +4,9 @@ A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/
 
 ![screenshot.png](screenshot.png)
 
-Version 0.0.0.0.0.0.3-prealpha (not even joking—this is a learning experience for me, so the code will *very*
-unoptimised).
+![screenshot_art.png](screenshot_art.png)
+
+Version 0.0.0.0.0.0.4-prealpha (not even joking!)
 
 **This is very much a WIP. Use at your own risk.**
 
@@ -14,6 +15,7 @@ unoptimised).
 - textual - for TUI
 - pygame - for music playing
 - tinytag - for reading audio tags
+- rich_pixel - for artwork
 
 ## Sample audio
 
@@ -39,13 +41,12 @@ $ textual run --dev music_player.py
 - [x] add support for `ogg` 
 - [x] make the bloody thing work!
 - [x] make the bloody thing work better!
+- [x] "now playing" with [chonky embedded album artwork](https://github.com/darrenburns/rich-pixels)?
 - [ ] make the bloody thing work even better!
-- [ ] add support for `mp4`, `m4a`, `ogg` and/or `flac` files :-)
+- [ ] add support for `mp4`, `m4a` and/or `flac` files :-)
 - [ ] clean up the UI (I'm looking at you, footer!)
 - [ ] record session info (current track, position, volume, etc.) so that playback starts where you left off last time
 - [ ] maybe - drag/drop source folder?
-- [ ] maybe - "now playing" with [chonky embedded album artwork](https://github.com/darrenburns/rich-pixels)? (wouldn't
-  that be neat?!)
 - [ ] other cool stuff!?!
 
 ## Notes

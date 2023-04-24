@@ -102,12 +102,35 @@ Checkbox {
 #play_button {
     display: block;
 }
+
 .playing #play_button {
     display: none;
 }
+
 #pause_button {
     display: none;
 }
+
 .playing #pause_button {
     display: block;
+}
+
+NowPlaying {
+    align-horizontal: center;
+    align-vertical: middle;
+    content-align: center middle;
+    layout: horizontal;
+    width: 100vw;
+    padding: 3;
+}
+
+NowPlaying ArtWork {
+    width: 50%;
+    content-align: right middle;
+    padding-right: 3;
+}
+NowPlaying Container {
+    align-horizontal: center;
+    align-vertical: top;
+    padding-top: 8;
 }

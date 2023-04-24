@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import sys
 
 from os import walk, path, environ
@@ -7,11 +8,13 @@ from pathlib import Path
 from random import shuffle
 from typing import ClassVar, Iterable, Optional
 
+from PIL import Image
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
 from rich.text import Text  # noqa - required by textual
-from rich.console import RenderableType  # noqa - required by textual
+from rich.console import RenderableType, Console  # noqa - required by textual
+from rich_pixels import Pixels
 
 from textual import log, events
 from textual.coordinate import Coordinate
@@ -20,7 +23,7 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import Reactive
 from textual.app import App, ComposeResult, CSSPathType
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.widgets import Header, Footer, Static, Button, Checkbox, Label
 from textual.widgets import DataTable, ContentSwitcher, Placeholder, DirectoryTree
 
@@ -56,6 +59,7 @@ SYM_SPEAKER_MUTED: str = "\U0001F507"  # 🔇
 TRACK_UNKNOWN: str = "<unknown track>"
 ARTIST_UNKNOWN: str = "<unknown artist>"
 ALBUM_UNKNOWN: str = "<unknown album>"
+NO_ARTWORK :str= "<no embedded album art>"
 
 PLAY: str = "Play"
 PAUSE: str = "Pause"
@@ -177,14 +181,20 @@ class DirectoryBrowser(DirectoryTree):
         self.app.focus_playlist()
 
 
-class NowPlaying(Placeholder):
-    """Display what is currently playing."""
-    BINDINGS = []
+class ArtWork(Static):
+    pass
 
-    title = Reactive("")
-    artist = Reactive("")
-    album = Reactive("")
-    artwork = None
+
+class NowPlaying(Static):
+    """Display what is currently playing."""
+
+    def compose(self) -> ComposeResult:
+        yield ArtWork(NO_ARTWORK, id="now_playing_art")
+        yield Container(
+            Static("TITLE", id="now_playing_track_name"),
+            Static("ARTIST", id="now_playing_artist_name"),
+            Static("ALBUM", id="now_playing_album_name")
+        )
 
 
 class ContextSwitcher(ContentSwitcher):
@@ -483,7 +493,7 @@ class MusicPlayerApp(App):
 
     def update_tracks_from_files(self, files: list) -> None:
         # Get track metadata from music files.
-        tracks: list[Track] = [TinyTag.get(f) for f in files]
+        tracks: list[Track] = [TinyTag.get(f, image=True) for f in files]
 
         # Clear the existing list of tracks and create a new {TrackPath:Track} mapping.
         self.tracks.clear()
@@ -492,14 +502,35 @@ class MusicPlayerApp(App):
     def update_track_info_track(self, track_path: TrackPath) -> None:
         """Update track info with a track's info."""
         track: Track = self.tracks[track_path]
-        self.update_track_info(track.title, track.artist, track.album)
+        pixels = None
+
+        image_data = track.get_image()
+        if image_data:
+            image: Image = Image.open(io.BytesIO(image_data))
+            pixels = Pixels.from_image(image.resize(size=(24, 24)))
+
+        self.update_track_info(track.title, track.artist, track.album, pixels)
         self.update_progress()
 
-    def update_track_info(self, title: Optional[str], artist: Optional[str], album: Optional[str]) -> None:
+    def update_track_info(self, title: Optional[str], artist: Optional[str], album: Optional[str],
+                          art: Optional[Pixels]) -> None:
         """Update the UI with details of the current track."""
-        self.query_one("#track_name", Static).update(f"[bold]{title}[/]" if title else f"[bold]{TRACK_UNKNOWN}[/]")
-        self.query_one("#artist_name", Static).update(f"{artist}" if artist else ARTIST_UNKNOWN)
-        self.query_one("#album_name", Static).update(f"[italic]{album}[/]" if album else f"[italic]{ALBUM_UNKNOWN}[/]")
+        track_name: str = f"[bold]{title}[/]" if title else f"[bold]{TRACK_UNKNOWN}[/]"
+        self.query_one("#track_name", Static).update(track_name)
+        self.query_one("#now_playing_track_name", Static).update(track_name)
+
+        artist_name: str = f"{artist}" if artist else ARTIST_UNKNOWN
+        self.query_one("#artist_name", Static).update(artist_name)
+        self.query_one("#now_playing_artist_name", Static).update(artist_name)
+
+        album_name: str = f"[italic]{album}[/]" if album else f"[italic]{ALBUM_UNKNOWN}[/]"
+        self.query_one("#album_name", Static).update(album_name)
+        self.query_one("#now_playing_album_name", Static).update(album_name)
+
+        if art:
+            self.query_one("#now_playing_art", Static).update(art)
+        else:
+            self.query_one("#now_playing_art", Static).update(NO_ARTWORK)
 
     def play_track(self, track_path: TrackPath) -> None:
         """Play a track."""
@@ -567,7 +598,7 @@ class MusicPlayerApp(App):
         """Stop the music."""
         self.remove_class("playing")
         self.set_status(f"Stopped")
-        self.update_track_info(None, None, None)
+        self.update_track_info(None, None, None, None)
         self.update_progress()
         stop_music()
 
