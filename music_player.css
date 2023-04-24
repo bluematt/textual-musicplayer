@@ -71,6 +71,10 @@ TrackProgress {
     margin-top: 1;
 }
 
+Checkbox {
+    padding: 1;
+}
+
 #progress_bar {
     width: 3fr;
 }
@@ -80,12 +84,15 @@ TrackProgress {
     margin-left: 1;
     margin-right: 1;
 }
+
 #track_position {
     content-align: right middle;
 }
+
 #track_length {
     content-align: left middle;
 }
+
 #status {
     background: darkgreen;
     color: silver;

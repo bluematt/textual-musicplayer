@@ -22,7 +22,7 @@ from textual.message import Message
 from textual.reactive import Reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Header, Footer, Static, Button, Switch, Label
+from textual.widgets import Header, Footer, Static, Button, Checkbox, Label
 from textual.widgets import DataTable, ContentSwitcher, Placeholder, DirectoryTree
 
 # Hide the Pygame prompts from the terminal.
@@ -123,16 +123,8 @@ class PlayerControls(Static):
     def compose(self) -> ComposeResult:
         yield Button(PLAY, id="play_button")
         yield Button(PAUSE, id="pause_button")
-        yield Horizontal(
-            Label(REPEAT, classes="label", id="repeat_label"),
-            Switch(value=False, id="repeat_switch", disabled=True),
-            classes="container",
-        )
-        yield Horizontal(
-            Label(RANDOM, classes="label", id="random_label"),
-            Switch(value=False, id="random_switch"),
-            classes="container",
-        )
+        yield Checkbox(REPEAT, id="repeat_checkbox")
+        yield Checkbox(RANDOM, id="random_checkbox")
 
 
 class TrackList(VerticalScroll):
@@ -404,10 +396,6 @@ class MusicPlayerApp(App):
             track_row[4] = Text(format_duration(track.duration), justify="right")
             playlist.add_row(*track_row, key=track_path)
 
-    def action_toggle_dark(self) -> None:
-        """An action to toggle dark mode."""
-        self.dark = not self.dark
-
     def action_toggle_play(self) -> None:
         """Toggle play/pause."""
         pygame.mixer.init()
@@ -431,13 +419,11 @@ class MusicPlayerApp(App):
 
     def action_toggle_repeat(self) -> None:
         """Action to toggle repeating."""
-        repeat_switch = self.query_one("#repeat_switch", Switch)
-        repeat_switch.toggle()
+        self.query_one("#repeat_checkbox", Checkbox).toggle()
 
     def action_toggle_random(self) -> None:
         """Action to toggle playlist randomisation."""
-        random_switch = self.query_one("#random_switch", Switch)
-        random_switch.toggle()
+        self.query_one("#random_checkbox", Checkbox).toggle()
 
     def action_open_directory(self) -> None:
         """Action to open the directory_browser."""
@@ -476,8 +462,8 @@ class MusicPlayerApp(App):
 
     def sort_tracks(self) -> None:
         """Sort the tracks according to the current app state."""
-        random_switch = self.query_one("#random_switch", Switch)
-        if random_switch.value:
+        random_checkbox = self.query_one("#random_checkbox", Checkbox)
+        if random_checkbox.value:
             shuffle(self.playlist)
         else:
             self.playlist.sort()
@@ -522,7 +508,7 @@ class MusicPlayerApp(App):
 
     def get_loops(self) -> int:
         """Return how many times to loop a track, based on the repeat switch's state."""
-        return -1 if self.query_one('#repeat_switch', Switch).value else 0
+        return -1 if self.query_one('#repeat_checkbox', Checkbox).value else 0
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handler for button presses."""
@@ -540,16 +526,16 @@ class MusicPlayerApp(App):
         if event.key == "s":
             self.save_screenshot(path=path.expanduser("~/Desktop"))
 
-    def on_switch_changed(self, event: Switch.Changed) -> None:
-        """Handler for switch changes."""
-        if event.switch.id == "random_switch":
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        """Handler for Checkbox changes."""
+        if event.checkbox.id == "random_checkbox":
             current_track_path: TrackPath = self.get_track_path(self.current_track_index)
             self.sort_tracks()
             self.update_playlist_datatable()
             self.current_track_index = self.playlist.index(current_track_path)
 
         # TODO Implement repeat.
-        if event.switch.id == "repeat_switch":
+        if event.checkbox.id == "repeat_checkbox":
             pass
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
