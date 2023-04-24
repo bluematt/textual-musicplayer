@@ -376,16 +376,8 @@ class MusicPlayerApp(App):
 
     def update_playlist_datatable(self) -> None:
         """Update the playlist with the tracks from the current working directory."""
-
-        # Create the visual data for the playlist.
-        playlist_data = []
-        for track_path in self.playlist:
-            track: Track = self.tracks[track_path]
-            track_row = [None, track.title, track.artist, track.album, track.duration, track.genre]
-            track_row[4] = Text(format_duration(track.duration), justify="right")
-            playlist_data.append(track_row)
-
         playlist: DataTable = self.get_playlist()
+
         playlist.clear(columns=True)
         # TODO See if there is a way to expand a DataTable to full width.
         #      See: https://github.com/Textualize/textual/discussions/1942
@@ -397,7 +389,13 @@ class MusicPlayerApp(App):
         playlist.add_column(label="Album")
         playlist.add_column(label="Length")
         playlist.add_column(label="Genre")
-        playlist.add_rows(playlist_data)
+
+        # Create the data for the playlist.
+        for track_path in self.playlist:
+            track: Track = self.tracks[track_path]
+            track_row = [None, track.title, track.artist, track.album, track.duration, track.genre]
+            track_row[4] = Text(format_duration(track.duration), justify="right")
+            playlist.add_row(*track_row, key=track_path)
 
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -531,8 +529,10 @@ class MusicPlayerApp(App):
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """Handler for switch changes."""
         if event.switch.id == "random_switch":
+            current_track_path: TrackPath = self.playlist[self.current_track_index]
             self.sort_tracks()
             self.update_playlist_datatable()
+            self.current_track_index = self.playlist.index(current_track_path)
 
         # TODO Implement repeat.
         if event.switch.id == "repeat_switch":
@@ -555,8 +555,8 @@ class MusicPlayerApp(App):
         self.refresh_tracks()
         self.focus_playlist()
 
-        self.current_track_index = 0
         self.previous_track_index = None
+        self.current_track_index = 0
         self.play()
 
     def stop_music(self) -> None:
