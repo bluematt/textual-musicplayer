@@ -7,6 +7,7 @@ from pathlib import Path
 from random import shuffle
 from typing import ClassVar, Iterable, Optional
 
+from textual.widget import Widget
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
@@ -47,17 +48,20 @@ TRACK_EXT: tuple[str, ...] = (".mp3", ".ogg",
 
 SYM_PLAY: str = "\u25B6"  # ▶️
 SYM_PAUSE: str = "\u23F8"  # ⏸️
-SYM_PLAY_PAUSE: str = "\u23EF"  # ⏯️
-SYM_REPEAT: str = "\U0001F501"  # 🔁
-SYM_RANDOM: str = "\U0001F500"  # 🔀
+# SYM_PLAY_PAUSE: str = "\u23EF"  # ⏯️
+# SYM_REPEAT: str = "\U0001F501"  # 🔁
+# SYM_RANDOM: str = "\U0001F500"  # 🔀
 SYM_SPEAKER: str = "\U0001F508"  # 🔈
 SYM_SPEAKER_MUTED: str = "\U0001F507"  # 🔇
 
 TRACK_UNKNOWN: str = "<unknown track>"
 ARTIST_UNKNOWN: str = "<unknown artist>"
 ALBUM_UNKNOWN: str = "<unknown album>"
-LBL_REPEAT: str = "Repeat"
-LBL_RANDOM: str = "Random"
+
+PLAY: str = "Play"
+PAUSE: str = "Pause"
+REPEAT: str = "Repeat"
+RANDOM: str = "Random"
 
 PATH_HOME: str = "~"
 PATH_ROOT: str = "/"
@@ -117,15 +121,15 @@ class PlayerControls(Static):
     """The music controls."""
 
     def compose(self) -> ComposeResult:
-        yield Button(SYM_PLAY, id="play_button")
-        yield Button(SYM_PAUSE, id="pause_button")
+        yield Button(PLAY, id="play_button")
+        yield Button(PAUSE, id="pause_button")
         yield Horizontal(
-            Label(SYM_REPEAT + LBL_REPEAT, classes="label"),
+            Label(REPEAT, classes="label", id="repeat_label"),
             Switch(value=False, id="repeat_switch", disabled=True),
             classes="container",
         )
         yield Horizontal(
-            Label(SYM_RANDOM + LBL_RANDOM, classes="label"),
+            Label(RANDOM, classes="label", id="random_label"),
             Switch(value=False, id="random_switch"),
             classes="container",
         )
@@ -288,7 +292,7 @@ class MusicPlayerApp(App):
     CSS_PATH: ClassVar[CSSPathType | None] = "music_player.css"
 
     BINDINGS = [
-        Binding("space", "toggle_play", SYM_PLAY_PAUSE),
+        Binding("space", "toggle_play", "Play/Pause"),
         Binding("m", "toggle_mute", "Mute/Unmute"),
         Binding("d", "toggle_dark", "Toggle dark mode", show=False),
         Binding("o", "open_directory", "Open directory"),
@@ -585,7 +589,7 @@ class MusicPlayerApp(App):
 
         # Update track progress if we have a track.
         if self.current_track_index is not None:
-            track_length_in_s, progress_in_s = self.get_track_progress(self.current_track_index)
+            track_length_in_s, progress_in_s = self.get_track_progress()
             progress = (progress_in_s / track_length_in_s)
 
         # Has the track finished?
@@ -597,7 +601,7 @@ class MusicPlayerApp(App):
         self.query_one("#track_position", Static).update(format_duration(progress_in_s))
         self.query_one("#track_length", Static).update(format_duration(track_length_in_s))
 
-    def get_track_progress(self, track_index: int) -> tuple[float, float]:
+    def get_track_progress(self) -> tuple[float, float]:
         pygame.mixer.init()
         track: Track = self.get_track(self.current_track_index)
         track_length_in_s: float = track.duration
