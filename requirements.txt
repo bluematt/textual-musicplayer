@@ -1,4 +1,4 @@
 pygame==2.3.0
 textual[dev]==0.20.1
-tinytag==1.8.1
+tinytag==1.9.0
 rich-pixels==2.1.1

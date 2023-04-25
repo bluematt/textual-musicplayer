@@ -1,3 +1,5 @@
+"""A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/)."""
+
 from __future__ import annotations
 
 import io
@@ -8,13 +10,14 @@ from pathlib import Path
 from random import shuffle
 from typing import ClassVar, Iterable, Optional
 
-from PIL import Image
 from tinytag import TinyTag
 from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
 from rich.text import Text  # noqa - required by textual
 from rich.console import RenderableType, Console  # noqa - required by textual
 from rich_pixels import Pixels
+
+from PIL import Image  # noqa - required by rich_pixels
 
 from textual import log, events
 from textual.coordinate import Coordinate
@@ -23,7 +26,7 @@ from textual.binding import Binding
 from textual.message import Message
 from textual.reactive import Reactive
 from textual.app import App, ComposeResult, CSSPathType
-from textual.containers import Horizontal, Vertical, VerticalScroll, Container
+from textual.containers import Horizontal, Vertical, Container
 from textual.widgets import Header, Footer, Static, Button, Checkbox, Label
 from textual.widgets import DataTable, ContentSwitcher, DirectoryTree
 
@@ -130,7 +133,7 @@ class PlayerControls(Static):
         yield Checkbox(RANDOM, id="random_checkbox")
 
 
-class TrackList(VerticalScroll):
+class TrackList(Static):
     """The scrollable list of tracks."""
 
     def compose(self) -> ComposeResult:
@@ -161,7 +164,7 @@ class DirectoryBrowser(DirectoryTree):
         try:
             return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
         except:
-            self.app.set_status(f"Cannot read directory", bgcolor="red")
+            self.app.set_status("Cannot read directory", bg_color="red")
             return []
 
     def on_tree_node_selected(self, event: DirectoryBrowser.NodeSelected) -> None:
@@ -229,6 +232,13 @@ def format_duration(duration: float) -> str:
     return f"{int(m)}\u2032{int(s):02}\u2033"  # unicode prime/double prime resp.
 
 
+def init_pygame() -> None:
+    """Initialise pygame."""
+    pygame.init()
+    pygame.mixer.init()
+    pygame.mixer.music.set_volume(1.0)
+
+
 def stop_music() -> None:
     """Stop playback."""
     pygame.mixer.init()
@@ -259,6 +269,13 @@ def is_playing() -> bool:
     """Return whether a track is currently playing."""
     pygame.mixer.init()
     return pygame.mixer.music.get_busy()
+
+
+def get_playback_position() -> float:
+    """Return the current playback position, in seconds."""
+    pygame.mixer.init()
+    # get_pos() returns a value in milliseconds
+    return float(pygame.mixer.music.get_pos()) / 1000.0
 
 
 def play_track(track_path: TrackPath, loops: int = -1) -> None:
@@ -311,7 +328,7 @@ class MusicPlayerApp(App):
     ]
 
     # The current working directory (where music files are).
-    cwd = Reactive("./demo_music")
+    cwd = Reactive(".")
 
     # The list of available tracks.
     tracks: Reactive[dict[TrackPath, Track]] = Reactive({})
@@ -411,7 +428,6 @@ class MusicPlayerApp(App):
 
     def action_toggle_play(self) -> None:
         """Toggle play/pause."""
-        pygame.mixer.init()
         if is_playing():
             self.pause()
         else:
@@ -597,7 +613,7 @@ class MusicPlayerApp(App):
     def stop_music(self) -> None:
         """Stop the music."""
         self.remove_class("playing")
-        self.set_status(f"Stopped")
+        self.set_status("Stopped")
         self.update_track_info(None, None, None, None)
         self.update_progress()
         stop_music()
@@ -606,28 +622,27 @@ class MusicPlayerApp(App):
         """Keep track of what's happening."""
         progress_in_s: float = 0.0
         track_length_in_s: float = 0.0
-        progress: float = 0.0
+        progress_percentage: float = 0.0
 
         # Update track progress if we have a track.
         if self.current_track_index is not None:
             track_length_in_s, progress_in_s = self.get_track_progress()
-            progress = (progress_in_s / track_length_in_s)
+            progress_percentage = (progress_in_s / track_length_in_s)
 
         # Has the track finished?
-        # pygame.mixer.music.get_pos() can return -0.01 if pygame detects that the track has finished playing.
-        if progress_in_s < 0.0 or progress >= 1.0:
+        # pygame.mixer.music.get_pos() can return -0.01 if pygame detects
+        # that the track has finished playing.
+        if progress_in_s < 0.0 or progress_percentage >= 1.0:
             self.advance_to_next_track()
 
-        self.query_one("#progress_bar", ProgressBar).percent_complete = progress
+        self.query_one("#progress_bar", ProgressBar).percent_complete = progress_percentage
         self.query_one("#track_position", Static).update(format_duration(progress_in_s))
         self.query_one("#track_length", Static).update(format_duration(track_length_in_s))
 
     def get_track_progress(self) -> tuple[float, float]:
-        pygame.mixer.init()
         track: Track = self.get_track(self.current_track_index)
         track_length_in_s: float = track.duration
-        # get_pos() returns a value in milliseconds
-        progress_in_s = float(pygame.mixer.music.get_pos()) / 1000.0
+        progress_in_s = get_playback_position()
 
         return track_length_in_s, progress_in_s
 
@@ -635,7 +650,10 @@ class MusicPlayerApp(App):
         return self.playlist[index]
 
     def get_track(self, index: int) -> Track:
-        return self.tracks[self.get_track_path(index)]
+        return self.get_track_for_path(self.get_track_path(index))
+
+    def get_track_for_path(self, track_path: TrackPath) -> Track:
+        return self.tracks[track_path]
 
     def advance_to_next_track(self):
         self.set_status("Next track...")
@@ -663,10 +681,10 @@ class MusicPlayerApp(App):
         self.create_playlist()
         self.update_playlist_datatable()
 
-    def set_status(self, message: str, bgcolor: str = "darkgreen"):
+    def set_status(self, message: str, bg_color: str = "darkgreen"):
         status = self.query_one('#status', Static)
         status.update(message)
-        status.styles.background = bgcolor
+        status.styles.background = bg_color
 
 
 if __name__ == "__main__":
@@ -675,9 +693,9 @@ if __name__ == "__main__":
     sys.path.append(PATH_DYLIBS)
 
     # Initialize pygame for music playback.
-    pygame.init()
-    pygame.mixer.init()
-    pygame.mixer.music.set_volume(1.0)
+    init_pygame()
 
-    app: MusicPlayerApp = MusicPlayerApp()
+    # Run the app.
+    app = MusicPlayerApp()
+    app.cwd = "./demo_music"
     app.run()
