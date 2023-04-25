@@ -25,7 +25,7 @@ from textual.reactive import Reactive
 from textual.app import App, ComposeResult, CSSPathType
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.widgets import Header, Footer, Static, Button, Checkbox, Label
-from textual.widgets import DataTable, ContentSwitcher, Placeholder, DirectoryTree
+from textual.widgets import DataTable, ContentSwitcher, DirectoryTree
 
 # Hide the Pygame prompts from the terminal.
 # Imported libraries should *not* dump to the terminal...
@@ -59,7 +59,7 @@ SYM_SPEAKER_MUTED: str = "\U0001F507"  # 🔇
 TRACK_UNKNOWN: str = "<unknown track>"
 ARTIST_UNKNOWN: str = "<unknown artist>"
 ALBUM_UNKNOWN: str = "<unknown album>"
-NO_ARTWORK :str= "<no embedded album art>"
+NO_ARTWORK: str = "<no embedded album art>"
 
 PLAY: str = "Play"
 PAUSE: str = "Pause"
