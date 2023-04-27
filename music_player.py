@@ -323,7 +323,7 @@ class MusicPlayerApp(App):
         Binding("p", "toggle_now_playing", "Now playing"),
         Binding("q", "quit", "Quit", show=False),
         Binding("backslash", "restart_playlist", "Restart playlist", show=False),
-        Binding("left_square_bracket", "previous", "Previous track", show=False),
+        Binding("left_square_bracket", "previous_track", "Previous track", show=False),
         Binding("right_square_bracket", "next_track", "Next track", show=False),
     ]
 

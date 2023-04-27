@@ -2,10 +2,16 @@ Screen {
     layout: vertical;
 }
 
+MusicPlayer {
+}
+
 TrackInformation {
     height: 7;
     border: solid white;
+    /*layout: horizontal;*/
     content-align: center top;
+    /*align-horizontal: center;*/
+    /*width: 80vw;*/
 }
 
 PlayerControls {
@@ -129,6 +135,7 @@ NowPlaying ArtWork {
     content-align: right middle;
     padding-right: 3;
 }
+
 NowPlaying Container {
     align-horizontal: center;
     align-vertical: top;
