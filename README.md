@@ -2,11 +2,25 @@
 
 A simple music player (MP3, etc.) using [Textual](https://textual.textualize.io/).
 
+Version 0.0.1-alpha
+
+## Screenshots
+
+### Main TUI
+
 ![screenshot.png](screenshot.png)
 
-![screenshot_art.png](screenshot_art.png)
+### Now playing with chonky album artwork
 
-Version 0.0.1-alpha
+![screenshot_artwork.png](screenshot_artwork.png)
+
+### Source directory browser
+
+![screenshot_browser.png](screenshot_browser.png)
+
+### Playlist filtering
+
+![screenshot_filter.png](screenshot_filter.png)
 
 ## Requirements
 
