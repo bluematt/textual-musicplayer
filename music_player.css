@@ -1,143 +1,164 @@
-Screen {
-    layout: vertical;
+SongControlBar {
+    layout: horizontal;
+    padding: 1 2;
+    background: $primary-background;
 }
 
-MusicPlayer {
+SongControlBar Vertical {
+    height: auto;
+    min-width: 18;
+    width: 18;
 }
 
-TrackInformation {
-    height: 7;
-    border: solid white;
-    /*layout: horizontal;*/
-    content-align: center top;
-    /*align-horizontal: center;*/
-    /*width: 80vw;*/
+#playback_status {
+    content-align: center middle;
+    color: gray;
 }
 
 PlayerControls {
     layout: horizontal;
-    height: 3;
-    width: 100vw;
+    min-width: 18;
+    width: 18;
+}
+
+PlayerControls Button {
+    min-width: 6;
+}
+
+TrackInformation {
+    width: 1fr;
+    padding: 0 2;
     align-horizontal: center;
+}
+
+TrackInformation #title,
+TrackInformation #artist,
+TrackInformation #album {
+    content-align: center middle;
+}
+
+TrackProgress {
+    margin-top: 1;
+    layout: horizontal;
+    align-horizontal: center;
+}
+
+TrackProgress #track_current_time {
+    margin-right: 2;
+    width: 8;
+    content-align: right middle;
+}
+
+TrackProgress #track_total_time {
+    margin-left: 2;
+    width: 8;
+    content-align: left middle;
+}
+
+FilterInput {
+    width: 18;
 }
 
 TrackList {
     height: 1fr;
-    width: 100%;
 }
 
-#playlist {
+.playing #play {
+    display: none;
+}
+
+.playing #pause {
+    display: block;
+}
+
+#play, .paused #play {
+    display: block;
+}
+
+#pause, .paused #pause {
+    display: none;
+}
+
+BrowserScreen {
+    align: center middle;
+}
+
+DirectoryBrowser {
+    width: 80vw;
+    height: 80vh;
+    background: $primary-background;
+    border: thick $primary;
+    padding: 0 1;
+}
+
+DirectoryBrowser #browser_directory {
+    margin-bottom: 1;
+}
+
+DirectoryBrowser Browser {
     height: 1fr;
-    width: 100vw;
-    min-width: 100%;
 }
 
-DataTable {
-    width: 100vw;
-}
-
-#track_name, #artist_name, #album_name {
-    content-align: center middle;
-}
-
-ProgressBar {
-    content-align: center middle;
-    background: grey;
-    height: 1;
-    width: 50vw;
-}
-
-ProgressBarTrack {
-    color: red;
-    background: white;
-    height: 1;
-    width: 100%;
-}
-
-#play {
-}
-
-#pause {
-}
-
-.container {
-    width: auto;
-    height: auto;
-}
-
-.label {
-    height: 3;
-    content-align: right middle;
-    width: auto;
-    padding: 1;
-}
-
-TrackProgress {
+DirectoryControls {
     layout: horizontal;
     margin-top: 1;
 }
 
-Checkbox {
-    padding: 1;
+DirectoryControls #directory_select {
+    dock: left;
+    background: $success;
 }
 
-#progress_bar {
-    width: 3fr;
+DirectoryControls #directory_cancel {
+    dock: right;
+    background: $error;
 }
 
-#track_position, #track_length {
-    width: 1fr;
-    margin-left: 1;
-    margin-right: 1;
-}
-
-#track_position {
-    content-align: right middle;
-}
-
-#track_length {
-    content-align: left middle;
-}
-
-#status {
-    background: darkgreen;
-    color: silver;
-    padding: 0 1;
-}
-
-#play_button {
-    display: block;
-}
-
-.playing #play_button {
-    display: none;
-}
-
-#pause_button {
-    display: none;
-}
-
-.playing #pause_button {
-    display: block;
-}
-
-NowPlaying {
-    align-horizontal: center;
-    align-vertical: middle;
-    content-align: center middle;
+NowPlayingScreen {
     layout: horizontal;
-    width: 100vw;
-    padding: 3;
 }
 
-NowPlaying ArtWork {
-    width: 50%;
-    content-align: right middle;
-    padding-right: 3;
+NowPlayingScreen Vertical {
+    width: 50vw;
+    height: 1fr;
+    align-vertical: middle;
 }
-
-NowPlaying Container {
+NowPlayingScreen PlayerControls {
+    width: 100%;
+    margin-top: 3;
+    align-vertical: middle;
     align-horizontal: center;
-    align-vertical: top;
-    padding-top: 8;
+}
+
+NowPlayingScreen SongInformation {
+    margin-right: 3;
+    padding: 2;
+    background: $primary-background;
+}
+
+AlbumArtwork {
+    width: 50vw;
+    height: 1fr;
+    align-vertical: middle;
+    align-horizontal: center;
+}
+
+AlbumArtwork #album_artwork {
+    width: 48;
+    height: 24;
+    content-align: center middle;
+    background: $primary-background;
+    border: wide $primary;
+}
+
+TrackProgress Bar > .bar--indeterminate {
+    color: $error-lighten-1;
+}
+
+.playing TrackProgress Bar > .bar--bar {
+    color: $success-lighten-3;
+}
+
+.paused TrackProgress Bar > .bar--bar {
+    color: $warning-lighten-1;
 }

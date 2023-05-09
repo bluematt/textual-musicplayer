@@ -2,33 +2,33 @@
 
 from __future__ import annotations
 
-import io
-import sys
-
-from os import walk, path, environ
+from io import BytesIO
+from os import environ, path, walk
+from os.path import abspath
 from pathlib import Path
 from random import shuffle
-from typing import ClassVar, Iterable, Optional
+from typing import Iterable, Optional
+from collections import deque
 
 from tinytag import TinyTag
-from tinytag.tinytag import ID3, Ogg, Wave, Flac, Wma, MP4, Aiff
 
-from rich.text import Text  # noqa - required by textual
-from rich.console import RenderableType, Console  # noqa - required by textual
+from rich.text import Text
 from rich_pixels import Pixels
 
-from PIL import Image  # noqa - required by rich_pixels
+from PIL import Image
 
-from textual import log, events
-from textual.coordinate import Coordinate
-from textual.timer import Timer
+from textual import on
+from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.message import Message
+from textual.containers import Vertical
+from textual.coordinate import Coordinate
 from textual.reactive import Reactive
-from textual.app import App, ComposeResult, CSSPathType
-from textual.containers import Horizontal, Vertical, Container
-from textual.widgets import Header, Footer, Static, Button, Checkbox, Label
-from textual.widgets import DataTable, ContentSwitcher, DirectoryTree
+from textual.screen import ModalScreen, Screen
+from textual.timer import Timer
+from textual.widgets import Button, DataTable, DirectoryTree, Footer, Header, Input, Placeholder, ProgressBar
+from textual.widgets import Static
+from textual.widgets._data_table import RowKey  # noqa - required to extend DataTable
+from textual.widgets._directory_tree import DirEntry  # noqa - required to extend DirectoryTree
 
 # Hide the Pygame prompts from the terminal.
 # Imported libraries should *not* dump to the terminal...
@@ -37,7 +37,6 @@ from textual.widgets import DataTable, ContentSwitcher, DirectoryTree
 environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "True"
 import pygame  # noqa: E402
 
-Track = TinyTag | ID3 | Ogg | Wave | Flac | Wma | MP4 | Aiff
 TrackPath = str
 
 # Path to binaries.
@@ -45,265 +44,356 @@ PATH_DYLIBS: str = "./venv/lib/python3.7/site-packages/pygame/.dylibs"
 
 # The supported file types.
 # TODO Determine while audio file types are/can be supported.
-TRACK_EXT: tuple[str, ...] = (".mp3", ".ogg",
-                              # ".mp4",
-                              # ".m4a",
-                              # ".flac"
-                              )
+TRACK_EXT: tuple[str, ...] = (".mp3", ".ogg",)  # ".mp4",  ".m4a", ".flac" - currently unsupported
 
-SYM_PLAY: str = "\u25B6"  # ▶️
-SYM_PAUSE: str = "\u23F8"  # ⏸️
-# SYM_PLAY_PAUSE: str = "\u23EF"  # ⏯️
-# SYM_REPEAT: str = "\U0001F501"  # 🔁
-# SYM_RANDOM: str = "\U0001F500"  # 🔀
-SYM_SPEAKER: str = "\U0001F508"  # 🔈
-SYM_SPEAKER_MUTED: str = "\U0001F507"  # 🔇
-
+# Localisation.
 TRACK_UNKNOWN: str = "<unknown track>"
 ARTIST_UNKNOWN: str = "<unknown artist>"
 ALBUM_UNKNOWN: str = "<unknown album>"
 NO_ARTWORK: str = "<no embedded album art>"
 
-PLAY: str = "Play"
-PAUSE: str = "Pause"
-REPEAT: str = "Repeat"
-RANDOM: str = "Random"
+# How often the UI is updated.
+FRAME_RATE: float = 1.0 / 30.0  # 30 Hz
 
-PATH_HOME: str = "~"
-PATH_ROOT: str = "/"
-
-FRAME_RATE: float = 1.0 / 60.0  # Hz
+# Artwork size
+ARTWORK_DIMENSIONS: tuple[int, int] = (24, 24)
 
 
-class ProgressBar(Static):
-    """A bar that tracks progress."""
+class Track:
+    """Convenience decorator for `TinyTag`."""
+    track: TinyTag
 
-    # The multiplier for `percent_complete` to fill up the bar's width.
-    PERCENTAGE_MULTIPLIER: float = 100.0
+    def __init__(self, track: TinyTag):
+        self.track = track
 
-    class ProgressBarTrack(Static):
-        """The track inside the `ProgressBar` that tracks progress."""
+    @property
+    def title(self) -> str:
+        """Return the track's title or a sane default."""
+        return stripped_value_or_default(self.track.title, TRACK_UNKNOWN)
 
-    percent_complete = Reactive(0.0)
+    @property
+    def artist(self) -> str:
+        """Return the track's artist or a sane default."""
+        return stripped_value_or_default(self.track.artist, ARTIST_UNKNOWN)
 
-    def compose(self) -> ComposeResult:
-        yield self.ProgressBarTrack("", id="progress_bar_track")
+    @property
+    def album(self) -> str:
+        """Return the track's album title or a sane default."""
+        return stripped_value_or_default(self.track.album, ALBUM_UNKNOWN)
 
-    def watch_percent_complete(self):
-        """Watch for changes to `percent_complete`."""
-        self.update_track_width(self.percent_complete * self.PERCENTAGE_MULTIPLIER)
+    @property
+    def genre(self):
+        """Return the track's genre."""
+        return self.track.genre
 
-    def update_track_width(self, width: float):
-        """Update the width of the track as a percentage."""
-        # TEMP Display the progress as a percentage.
-        # self.query_one("#progress_bar_track", self.ProgressBarTrack).update(f"{str(int(width))}%")
-        self.query_one("#progress_bar_track", self.ProgressBarTrack).styles.width = f"{str(width)}%"
+    @property
+    def duration(self):
+        """Return the track's duration."""
+        return self.track.duration
+
+    @property
+    def image(self) -> Pixels | str:
+        """Return the track's image, if available."""
+        image_data = self.track.get_image()
+        if image_data:
+            image: Image = Image.open(BytesIO(image_data))
+            return Pixels.from_image(image.resize(size=ARTWORK_DIMENSIONS))
+        return NO_ARTWORK
+
+    def contains(self, filter_str: str):
+        """Return whether `filter_str` (or part thereof) is (naïvely) somewhere within the track's information."""
+        filters = filter_str.lower().split(" ")
+        search = f"{self.title} {self.artist} {self.album} {self.genre}".lower()
+        return all(f in search for f in filters)
+
+    def __repr__(self):
+        return f"{self.title} by {self.artist}"
 
 
 class TrackProgress(Static):
-    """Display information about a track's progress."""
+    """Display the progress of a track."""
 
     def compose(self) -> ComposeResult:
-        yield Horizontal(
-            Label(format_duration(0.0).rjust(10), id="track_position"),
-            ProgressBar(id="progress_bar"),
-            Label(format_duration(59999.0).ljust(10), id="track_length")
-        )
+        yield Static(format_duration(0.0), id="track_current_time")
+        yield ProgressBar(total=None, show_eta=False, show_percentage=False, id="progress_bar")
+        yield Static(format_duration(0.0), id="track_total_time")
 
 
 class TrackInformation(Static):
-    """The track information."""
+    """Display information about a track."""
 
     def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static(TRACK_UNKNOWN, id="track_name"),
-            Static(ARTIST_UNKNOWN, id="artist_name"),
-            Static(ALBUM_UNKNOWN, id="album_name"),
-            TrackProgress(id="track_progress")
-        )
+        yield Static(TRACK_UNKNOWN, id="title")
+        yield Static(ARTIST_UNKNOWN, id="artist")
+        yield Static(ALBUM_UNKNOWN, id="album")
+        yield TrackProgress()
 
 
 class PlayerControls(Static):
-    """The music controls."""
+    """Playback controls."""
 
     def compose(self) -> ComposeResult:
-        yield Button(PLAY, id="play_button")
-        yield Button(PAUSE, id="pause_button")
-        yield Checkbox(REPEAT, id="repeat_checkbox")
-        yield Checkbox(RANDOM, id="random_checkbox")
+        yield Button("|<", id="previous_track")
+        yield Button("|>", id="play")
+        yield Button("||", id="pause")
+        yield Button(">|", id="next_track")
 
 
-class TrackList(Static):
-    """The scrollable list of tracks."""
+class TrackList(DataTable):
+    """The list of available tracks."""
 
-    def compose(self) -> ComposeResult:
-        playlist = DataTable(id="playlist")
-        playlist.cursor_type = "row"
-        playlist.zebra_stripes = True
+    def on_mount(self) -> None:
+        # TODO See if there is a way to expand a DataTable to full width.
+        #      See: https://github.com/Textualize/textual/discussions/1942
+        self.add_column(label="  ", width=2, key="status")
+        self.add_columns("Title", "Artist", "Album", "Length", "Genre")
+        self.cursor_type = "row"
+        self.zebra_stripes = True
 
-        yield playlist
+    def update_tracks(self, tracks: dict[TrackPath:object], playlist: list[TrackPath]) -> None:
+        self.clear()
+        for track_path in playlist:
+            track: Track = tracks[track_path]
+            track_row = [None, track.title, track.artist, track.album, track.duration, track.genre]
+            track_row[4] = Text(format_duration(track.duration), justify="right")
+            self.add_row(*track_row, key=track_path)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handler for selecting a row in the data table."""
+        self.app.select_track(event.row_key.value)
+
+    def remove_icons(self) -> None:
+        tracks = self.rows
+        [self.update_cell(row_key=track_path, column_key="status", value="") for track_path in tracks.keys()]
+
+    def set_icon(self, track_path: TrackPath, icon: str = "") -> None:
+        self.update_cell(row_key=track_path, column_key="status", value=icon)
+
+    def get_row_index_from_row_key(self, row_key: RowKey):
+        return self._row_locations.get(row_key)
 
 
-class DirectoryBrowser(DirectoryTree):
-    """The directory browser."""
-    BINDINGS = [
-        Binding("~", "home", "Home directory"),
-        Binding("/", "root", "Root directory"),
-        Binding("o", "close_browser", "Close"),
-    ]
-
-    class DirectorySelected(Message):
-        directory: str
-
-        def __init__(self, directory: str):
-            self.directory = directory
-            super().__init__()
+class Browser(DirectoryTree):
+    def on_tree_node_selected(self, event: DirectoryTree.NodeSelected):
+        self.app.query_one(DirectoryBrowser).directory = event.node.data
 
     def filter_paths(self, paths: Iterable[Path]) -> Iterable[Path]:
         """Filter paths to non-hidden directories only."""
-        try:
-            return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
-        except:
-            self.app.set_status("Cannot read directory", bg_color="red")
-            return []
-
-    def on_tree_node_selected(self, event: DirectoryBrowser.NodeSelected) -> None:
-        """Handler for selecting a directory in the directory browser."""
-        self.post_message(self.DirectorySelected(event.node.data.path))
-
-    def action_home(self) -> None:
-        """Set the root of the directory browser to `~`."""
-        self.parent.refresh_directory_browser(PATH_HOME)
-
-    def action_root(self) -> None:
-        """Set the root of the directory browser to `/`."""
-        self.parent.refresh_directory_browser(PATH_ROOT)
-
-    def action_close_browser(self) -> None:
-        """Close the directory browser and show the playlist."""
-        self.app.focus_playlist()
+        return [p for p in paths if p.is_dir() and not p.name.startswith(".")]
 
 
-class ArtWork(Static):
-    pass
+class DirectoryControls(Static):
+    def compose(self) -> ComposeResult:
+        yield Button("Select", id="directory_select")
+        yield Button("Cancel", id="directory_cancel")
 
 
-class NowPlaying(Static):
-    """Display what is currently playing."""
+class DirectoryBrowser(Static):
+    directory: Reactive[Optional[DirEntry]] = Reactive(".")
 
     def compose(self) -> ComposeResult:
-        yield ArtWork(NO_ARTWORK, id="now_playing_art")
-        yield Container(
-            Static("TITLE", id="now_playing_track_name"),
-            Static("ARTIST", id="now_playing_artist_name"),
-            Static("ALBUM", id="now_playing_album_name")
+        yield Static("", id="browser_directory")
+        yield Browser(path=self.directory, id="browser")
+        yield DirectoryControls()
+
+    def on_mount(self):
+        self.query_one(Browser).focus()
+
+    def watch_directory(self):
+        self.query_one("#browser_directory", Static).update(abspath(path.expanduser(self.directory.path)))
+
+    @on(Button.Pressed, "#directory_cancel")
+    def close_browser(self) -> None:
+        self.app.pop_screen()
+
+    @on(Button.Pressed, "#directory_select")
+    def select_directory(self) -> None:
+        self.app.open_directory(self.directory)
+        self.app.pop_screen()
+
+
+class AlbumArtwork(Static):
+    """Container for album artwork."""
+
+    def compose(self) -> ComposeResult:
+        yield Static(NO_ARTWORK, id="album_artwork")
+
+
+class SongControlBar(Static):
+    """The song control bar."""
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            PlayerControls(id="playback_controls"),
+            Static("󰒞", id="playback_status")
         )
+        yield TrackInformation(id="song_information")
+        yield FilterInput("", placeholder="Filter", id="filter")
 
 
-class ContextSwitcher(ContentSwitcher):
+class NowPlayingScreen(Screen):
+    """Screen that displays the currently playing track and album artwork."""
+    BINDINGS = [
+        Binding("space", "app.play_pause", "|>/||"),
+        Binding("left_square_bracket", "app.previous_track", "<<"),
+        Binding("right_square_bracket", "app.next_track", ">>"),
+        Binding("p", "app.pop_screen()", "Tracks"),
+    ]
 
     def compose(self) -> ComposeResult:
-        yield TrackList(id="tracklist")
-        yield self.new_directory_browser(PATH_HOME)
-        yield NowPlaying(id="now_playing")
-
-    def new_directory_browser(self, base_path: str) -> DirectoryBrowser:  # noqa
-        return DirectoryBrowser(path=path.expanduser(base_path), id="directory_browser")
-
-    def refresh_directory_browser(self, base_path: str):
-        self.query_one("#directory_browser", DirectoryBrowser).remove()
-        self.mount(self.new_directory_browser(base_path))
-        self.query_one("#directory_browser", DirectoryBrowser).focus()
+        yield Header(show_clock=True)
+        yield AlbumArtwork()
+        yield Vertical(
+            TrackInformation(id="song_information"),
+            PlayerControls(id="playback_controls"),
+            Static("󰒞", id="playback_status")
+        )
+        # yield Static("", id="status_bar", disabled=True)
+        yield Footer()
 
 
 class MusicPlayer(Static):
-    """The main music player user interface."""
-
     def compose(self) -> ComposeResult:
-        yield TrackInformation()
-        yield PlayerControls()
-        yield ContextSwitcher(id="context", initial="tracklist")
-        yield Static("Loading...", id="status")
+        yield SongControlBar(id="song_control_bar")
+        yield TrackList(id="track_list")
+        yield Static("", id="status_bar")
+
+
+def stripped_value_or_default(value: any, default: str) -> str:
+    """Return a value (left and right trimmed) or a default, if it would be an empty string."""
+    if not (value and str(value).strip()):
+        return default
+    return str(value).strip(" ")
+
+
+def get_files_in_directory(directory: str) -> list[str]:
+    """Return the selected media files (sorted) in the directory tree starting at `directory`."""
+    if not path.exists(directory) or not path.isdir(directory):
+        raise NotADirectoryError
+
+    files = [
+        TrackPath(path.join(dir_path, file))
+        for (dir_path, _dir_names, filenames) in walk(directory)
+        for file in filenames if file.endswith(TRACK_EXT) and not file.startswith(".")
+    ]
+
+    if len(files) == 0:
+        raise FileNotFoundError
+
+    files.sort()
+    return files
 
 
 def format_duration(duration: float) -> str:
-    """Converts a duration in seconds into a minute/second string."""
+    """Convert a duration in seconds into a minute/second string."""
     (m, s) = divmod(duration, 60.0)
     return f"{int(m)}\u2032{int(s):02}\u2033"  # unicode prime/double prime resp.
 
 
 def init_pygame() -> None:
-    """Initialise pygame."""
+    """Initialise pygame for playback."""
     pygame.init()
     pygame.mixer.init()
-    pygame.mixer.music.set_volume(1.0)
 
 
-def stop_music() -> None:
-    """Stop playback."""
-    pygame.mixer.init()
-    pygame.mixer.music.stop()
+def play_track(track_path: TrackPath) -> None:
+    """Load media and start playback."""
+    pygame.mixer.music.load(track_path)
     pygame.mixer.music.rewind()
-    pygame.mixer.music.unload()
+    pygame.mixer.music.play(-1)
 
 
-def pause() -> None:
-    """Pause playback."""
-    pygame.mixer.init()
-    pygame.mixer.music.pause()
-
-
-def unpause() -> None:
+def unpause_playback() -> None:
     """Unpause playback."""
-    pygame.mixer.init()
     pygame.mixer.music.unpause()
 
 
-def toggle_mute() -> None:
-    """Toggle mute."""
-    pygame.mixer.init()
-    pygame.mixer.music.set_volume(1.0 - pygame.mixer.music.get_volume())
+def pause_playback() -> None:
+    """Pause playback."""
+    pygame.mixer.music.pause()
 
 
-def is_playing() -> bool:
-    """Return whether a track is currently playing."""
-    pygame.mixer.init()
-    return pygame.mixer.music.get_busy()
+def stop_playback() -> None:
+    """Stop playback and unload the loaded media."""
+    pygame.mixer.music.stop()
+    pygame.mixer.music.unload()
 
 
 def get_playback_position() -> float:
     """Return the current playback position, in seconds."""
-    pygame.mixer.init()
-    # get_pos() returns a value in milliseconds
-    return float(pygame.mixer.music.get_pos()) / 1000.0
+    return float(pygame.mixer.music.get_pos()) / 1000.0  # get_pos() returns a value in milliseconds
 
 
-def play_track(track_path: TrackPath, loops: int = -1) -> None:
-    """Play a track."""
-    if not track_path:
-        log("NO TRACK TO PLAY")
-        return
+class TrackScreen(Screen):
+    """Screen that displays the track list."""
 
-    pygame.mixer.init()
-    pygame.mixer.music.load(track_path)
-    pygame.mixer.music.rewind()  # We need this to get accurate timings.
-    pygame.mixer.music.play(loops=loops)
-
-
-def get_files_in_directory(directory: str) -> list[TrackPath]:
-    """Returns the (sorted) list of files in the directory."""
-    if not path.exists(directory) or not path.isdir(directory):
-        raise FileNotFoundError
-
-    files = [
-        TrackPath(path.join(dir_path, f))
-        for (dir_path, _dir_names, filenames) in walk(directory)
-        for f in filenames if f.endswith(TRACK_EXT) and not f.startswith(".")
+    BINDINGS = [
+        Binding("space", "app.play_pause", "|>/||"),
+        Binding("left_square_bracket", "app.previous_track", "<<"),
+        Binding("right_square_bracket", "app.next_track", ">>"),
+        Binding("p", "app.push_screen('now_playing')", "Now playing"),
+        Binding("ctrl+f", "focus_filter", "Filter"),
+        Binding("ctrl+x", "clear_filter", "Clear filter", show=False),
     ]
 
-    files.sort()
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield MusicPlayer()
+        yield Footer()
 
-    return files
+    def action_focus_filter(self) -> None:
+        self.query_one("#filter", Input).focus()
+
+    def action_clear_filter(self):
+        self.query_one("#filter", Input).value = ""
+        self.app.filter_playlist()
+
+
+class FilterInput(Input):
+    last_filter: str = ""
+
+    BINDINGS = [
+        Binding("escape", "unfocus_filter", "Unfocus", show=False),
+    ]
+
+    def action_unfocus_filter(self) -> None:
+        if self.value != self.last_filter:
+            self.value = self.last_filter
+        self.app.get_track_list_widget().focus()
+
+    def action_submit(self) -> None:
+        self.last_filter = self.value
+        self.app.filter_playlist(self.value)
+
+
+class BrowserScreen(ModalScreen):
+    BINDINGS = [
+        Binding("o", "pop_screen()", "Close browser"),
+        Binding("escape", "pop_screen()", "Close browser", show=False),
+        Binding(".", "set_directory('.')", "Current"),
+        Binding("~", "set_directory('~')", "Home"),
+        Binding("/", "set_directory('/')", "Root"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield DirectoryBrowser(id="directory_browser")
+        yield Footer()
+
+    def action_set_directory(self, directory: str) -> None:
+        self.query_one(Browser).path = path.expanduser(directory)
+        self.query_one(Browser).focus()
+
+
+class HelpScreen(ModalScreen):
+    BINDINGS = [
+        Binding("f1", "pop_screen()", "Close help"),
+        Binding("escape", "pop_screen()", "Close help", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        # TODO load help information from "HELP.md".
+        yield Placeholder("TODO Help information will go here...")
 
 
 class MusicPlayerApp(App):
@@ -311,391 +401,348 @@ class MusicPlayerApp(App):
 
     TITLE = "tTunes"  # 😏
 
-    CSS_PATH: ClassVar[CSSPathType | None] = "music_player.css"
+    CSS_PATH = "music_player.css"
 
     BINDINGS = [
-        Binding("space", "toggle_play", "Play/Pause"),
-        Binding("m", "toggle_mute", "Mute/Unmute"),
-        Binding("d", "toggle_dark", "Toggle dark mode", show=False),
-        Binding("o", "open_directory", "Open directory"),
-        Binding("r", "toggle_repeat", "Toggle repeat", show=False),
-        Binding("m", "toggle_random", "Toggle random", show=False),
-        Binding("p", "toggle_now_playing", "Now playing"),
-        Binding("q", "quit", "Quit", show=False),
-        Binding("backslash", "restart_playlist", "Restart playlist", show=False),
-        Binding("left_square_bracket", "previous_track", "Previous track", show=False),
-        Binding("right_square_bracket", "next_track", "Next track", show=False),
+        Binding("f1", "push_screen('help')", "Help"),
+        Binding("o", "push_screen('browser')", "Music browser"),
+        Binding("q", "stop_playback", "Stop"),
+        Binding("r", "toggle_shuffle", "Toggle shuffle", show=False),
+        Binding("s", "save_screen", "Save screenshot", show=False),
     ]
 
-    # The current working directory (where music files are).
+    SCREENS = {
+        "help": HelpScreen(),
+        "browser": BrowserScreen(),
+        "tracks": TrackScreen(),
+        "now_playing": NowPlayingScreen()
+    }
+
+    # The current working directory (location of music files).
     cwd = Reactive(".")
-
-    # The list of available tracks.
+    # The currently available tracks, loaded from `cwd`.
     tracks: Reactive[dict[TrackPath, Track]] = Reactive({})
-
-    # The current playlist.
-    playlist: Reactive[list[TrackPath]] = Reactive([])
-
-    # The index of the current track.
-    current_track_index: Reactive[Optional[int]] = Reactive(0)
-
-    # The index of the previous track.
-    previous_track_index: Optional[int] = None
-
-    # The ID of the previous context widget.
-    previous_context: str = "tracklist"
-
-    # A timer used to perform time-based updates.
+    # The current order of the tracks to play.
+    playlist: Reactive[deque[TrackPath]] = Reactive(deque())
+    # The index of the current track in `playlist`.
+    current_track: Reactive[TrackPath] = Reactive("")
+    # Timer to keep track of track progress.
     progress_timer: Timer = None
 
-    def watch_current_track_index(self, previous_track_index: int, new_track_index: int) -> None:
-        """Watch for changes to `current_track_index`."""
-        self.previous_track_index = previous_track_index
-        self.current_track_index = new_track_index
+    def watch_cwd(self) -> None:
+        self.refresh_tracks(self.cwd)
 
-        if self.current_track_index is None:
-            self.previous_track_index = None
-            self.stop_music()
-            return
+    def watch_current_track(self) -> None:
+        if self.is_playing:
+            self.play()
 
-        self.play()
+    def watch_playlist(self) -> None:
+        self.update_track_list()
 
-    def set_playlist_current_icon(self, icon: str, row: int, previous_row: int = None) -> None:
-        """Set the icon for the currently playing track in the playlist."""
-        playlist: DataTable = self.get_playlist()
-        if previous_row is not None:
-            playlist.update_cell_at(Coordinate(row=previous_row, column=0), "")
-        playlist.update_cell_at(Coordinate(row=row, column=0), icon)
+    async def on_mount(self) -> None:
+        await self.push_screen("tracks")
+        self.set_status("Starting up...")
+        self.progress_timer = self.set_interval(FRAME_RATE, self.monitor_track_progress, pause=False)
+        self.stop()
+        self.refresh_tracks(self.cwd)
+        self.reset_current_track()
 
-    def get_next_track_index(self) -> int:
-        next_track_index: int = self.current_track_index + 1
-        return next_track_index if next_track_index < len(self.playlist) else 0
+    def action_save_screen(self) -> None:
+        self.save_screenshot(path=path.expanduser("~/Desktop"))
 
-    def get_previous_track_index(self) -> int:
-        previous_track_index: int = self.current_track_index - 1
-        return previous_track_index if previous_track_index < len(self.playlist) else len(self.playlist) - 1
+    def action_play_pause(self) -> None:
+        self.toggle_playback()
 
-    def compose(self) -> ComposeResult:
-        """Render the music player."""
-        yield Header(show_clock=True)
-        yield MusicPlayer()
-        yield Footer()
-
-    def on_mount(self) -> None:
-        """Mount the application."""
-        self.refresh_tracks()
-        self.focus_playlist()
-
-        self.progress_timer = self.set_interval(FRAME_RATE, self.update_progress, pause=False)
-        self.play()
-
-    def play(self) -> None:
-        """Play the current track."""
-        # If no tracks, no current track.
-        if len(self.playlist) <= 0:
-            self.current_track_index = None
-
-        # If no current track, bail.
-        if self.current_track_index is None:
-            return
-
-        track: Track = self.get_track(self.current_track_index)
-        self.set_status(f"{SYM_PLAY}  [bold]{track.title}[/] by {track.artist}")
-        self.play_track(self.get_track_path(self.current_track_index))
-
-    def update_playlist_datatable(self) -> None:
-        """Update the playlist with the tracks from the current working directory."""
-        playlist: DataTable = self.get_playlist()
-
-        playlist.clear(columns=True)
-        # TODO See if there is a way to expand a DataTable to full width.
-        #      See: https://github.com/Textualize/textual/discussions/1942
-        # TODO This can probably be optimised by laying out the shape
-        #      of the grid in advance, and just refilling the data.
-        playlist.add_column(label=" ", width=1, key="status")
-        playlist.add_column(label="Title")
-        playlist.add_column(label="Artist")
-        playlist.add_column(label="Album")
-        playlist.add_column(label="Length")
-        playlist.add_column(label="Genre")
-
-        # Create the data for the playlist.
-        for track_path in self.playlist:
-            track: Track = self.tracks[track_path]
-            track_row = [None, track.title, track.artist, track.album, track.duration, track.genre]
-            track_row[4] = Text(format_duration(track.duration), justify="right")
-            playlist.add_row(*track_row, key=track_path)
-
-    def action_toggle_play(self) -> None:
-        """Toggle play/pause."""
-        if is_playing():
-            self.pause()
+    def action_toggle_shuffle(self) -> None:
+        self.toggle_class("shuffled")
+        if self.has_class("shuffled"):
+            self.shuffle_playlist()
+            self.set_status("Playlist shuffle: on")
+            [widget.update("󰒟") for widget in self.query("#playback_status").results()]
         else:
-            self.unpause()
-
-    def action_toggle_now_playing(self) -> None:
-        """Action to toggle the 'now playing' context."""
-        current_context: str = self.query_one("#context", ContentSwitcher).current
-        if current_context == "now_playing":
-            self.query_one("#context", ContentSwitcher).current = self.previous_context
-        else:
-            self.previous_context = current_context
-            self.query_one("#context", ContentSwitcher).current = "now_playing"
-
-    def action_toggle_mute(self) -> None:
-        """Action to toggle muting."""
-        toggle_mute()
-
-    def action_toggle_repeat(self) -> None:
-        """Action to toggle repeating."""
-        self.query_one("#repeat_checkbox", Checkbox).toggle()
-
-    def action_toggle_random(self) -> None:
-        """Action to toggle playlist randomisation."""
-        self.query_one("#random_checkbox", Checkbox).toggle()
-
-    def action_open_directory(self) -> None:
-        """Action to open the directory_browser."""
-        self.set_context("directory_browser")
-        self.set_focus(self.query_one("#directory_browser", DirectoryBrowser))
-        # TODO Can we highlight the cwd in this context?
-
-    def action_close_directory(self) -> None:
-        """Action to close the directory_browser."""
-        self.query_one("#context").current = "tracklist"
-
-    def action_restart_playlist(self) -> None:
-        self.current_track_index = 0
-
-    def action_previous_track(self) -> None:
-        self.current_track_index = self.get_previous_track_index()
+            self.unshuffle_playlist()
+            self.set_status("Playlist shuffle: off")
+            [widget.update("󰒞") for widget in self.query("#playback_status").results()]
 
     def action_next_track(self) -> None:
-        self.current_track_index = self.get_next_track_index()
+        self.select_next_track()
 
-    def pause(self) -> None:
-        """Pause playback."""
-        pause()
-        track: Track = self.get_track(self.current_track_index)
-        self.remove_class("playing")
-        self.set_status(f"{SYM_PAUSE}  [bold]{track.title}[/] by {track.artist}")
-        self.set_playlist_current_icon(SYM_PAUSE, self.current_track_index, self.previous_track_index)
+    def action_previous_track(self) -> None:
+        self.select_previous_track()
 
-    def unpause(self) -> None:
-        """Unpause playback."""
-        unpause()
-        track: Track = self.get_track(self.current_track_index)
-        self.add_class("playing")
-        self.set_status(f"{SYM_PLAY}  [bold]{track.title}[/] by {track.artist}")
-        self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
+    def reset_current_track(self):
+        """Reset the current track to the first in the playlist."""
+        self.current_track = self.playlist[0]
 
-    def sort_tracks(self) -> None:
-        """Sort the tracks according to the current app state."""
-        random_checkbox = self.query_one("#random_checkbox", Checkbox)
-        if random_checkbox.value:
-            shuffle(self.playlist)
+    def filter_playlist(self, filter_str: str = ""):
+        """Filter the playlist by the supplied filter."""
+        self.set_status("Filtering track list...")
+
+        filter_str = filter_str.strip()
+
+        if filter_str == "":
+            self.set_status("Filtering removed")
+            self.reset_playlist()
         else:
-            self.playlist.sort()
+            self.set_status(f"Filter track list: '{filter_str}'")
+            self.apply_filter_to_playlist(filter_str)
 
-    def scan_track_directory(self) -> None:
-        """Scan the current working directory for music files."""
-        files = get_files_in_directory(self.cwd)
-        self.update_tracks_from_files(files)
+    def select_current_playing_track(self) -> None:
+        """Attempt to (re)select the current playing track in the track list."""
+        can_highlight: bool = self.highlight_current_track()
+        if can_highlight:
+            self.select_track(self.current_track)
+            self.remove_all_playlist_icons()
+            self.set_playlist_icon(self.current_track, "|>" if self.is_playing else "||" if self.is_paused else "")
 
-    def create_playlist(self) -> None:
-        """Create a playlist for the currently available tracks."""
-        self.playlist = list(self.tracks.keys())
-        self.sort_tracks()
+        self.get_track_list_widget().focus()
 
-    def update_tracks_from_files(self, files: list) -> None:
-        # Get track metadata from music files.
-        tracks: list[Track] = [TinyTag.get(f, image=True) for f in files]
+    def apply_filter_to_playlist(self, filter_str: str) -> None:
+        """Apply filter(s) to the playlist."""
+        track_path: TrackPath
+        track: Track
+        tracks: dict[TrackPath, Track] = dict((track_path, track)
+                                              for track_path, track in self.tracks.items()
+                                              if track.contains(filter_str) or filter_str in track_path)
+        self.update_playlist(list(tracks.keys()))
+        self.update_track_list()
 
-        # Clear the existing list of tracks and create a new {TrackPath:Track} mapping.
+    def refresh_tracks(self, track_directory: str) -> None:
+        """Refresh the track list from the supplied directory."""
+        self.set_status("Loading track list...")
+        try:
+            files = get_files_in_directory(track_directory)
+            self.set_tracks(files)
+            self.reset_playlist()
+            self.reset_current_track()
+        except NotADirectoryError:
+            self.set_status(f"{track_directory} is not a directory")
+            return
+        except FileNotFoundError:
+            self.set_status(f"{track_directory} does not contain music")
+            return
+
+    def reset_playlist(self):
+        """Reset the playlist based on the available tracks."""
+        self.update_playlist(self.tracks.keys())
+        self.update_track_list()
+
+    def set_tracks(self, files: list[str]) -> None:
+        """Set the list of available tracks from the list of files."""
+        tracks: list[Track] = [Track(TinyTag.get(file, image=True)) for file in files]
         self.tracks.clear()
         [self.tracks.update({TrackPath(files[idx]): track}) for idx, track in enumerate(tracks)]
 
-    def update_track_info_track(self, track_path: TrackPath) -> None:
-        """Update track info with a track's info."""
-        track: Track = self.tracks[track_path]
-        pixels = None
+    def update_playlist(self, track_paths: list[TrackPath]) -> None:
+        """Update the playlist by recreating it from track_path as a new deque."""
+        self.playlist = deque(track_paths)
 
-        image_data = track.get_image()
-        if image_data:
-            image: Image = Image.open(io.BytesIO(image_data))
-            pixels = Pixels.from_image(image.resize(size=(24, 24)))
+    def shuffle_playlist(self):
+        """Randomise the playlist."""
+        new_playlist: list[TrackPath] = list(self.playlist)
+        shuffle(new_playlist)
+        self.update_playlist(new_playlist)
 
-        self.update_track_info(track.title, track.artist, track.album, pixels)
-        self.update_progress()
+    def unshuffle_playlist(self):
+        """Sort the playlist by track path."""
+        new_playlist: list[TrackPath] = list(self.playlist)
+        new_playlist.sort()
+        self.update_playlist(new_playlist)
 
-    def update_track_info(self, title: Optional[str], artist: Optional[str], album: Optional[str],
-                          art: Optional[Pixels]) -> None:
-        """Update the UI with details of the current track."""
-        track_name: str = f"[bold]{title}[/]" if title else f"[bold]{TRACK_UNKNOWN}[/]"
-        self.query_one("#track_name", Static).update(track_name)
-        self.query_one("#now_playing_track_name", Static).update(track_name)
+    def update_track_list(self) -> None:
+        """Update the track list with the current playlist."""
+        self.set_status("Updating track list...")
+        self.get_screen("tracks").query_one(TrackList).update_tracks(self.tracks, self.playlist)
+        self.set_status("Track list updated")
+        self.select_current_playing_track()
 
-        artist_name: str = f"{artist}" if artist else ARTIST_UNKNOWN
-        self.query_one("#artist_name", Static).update(artist_name)
-        self.query_one("#now_playing_artist_name", Static).update(artist_name)
-
-        album_name: str = f"[italic]{album}[/]" if album else f"[italic]{ALBUM_UNKNOWN}[/]"
-        self.query_one("#album_name", Static).update(album_name)
-        self.query_one("#now_playing_album_name", Static).update(album_name)
-
-        if art:
-            self.query_one("#now_playing_art", Static).update(art)
+    def toggle_playback(self) -> None:
+        """Toggle playback."""
+        if self.is_paused or self.is_stopped:
+            self.play()
         else:
-            self.query_one("#now_playing_art", Static).update(NO_ARTWORK)
-
-    def play_track(self, track_path: TrackPath) -> None:
-        """Play a track."""
-        if track_path:
-            play_track(track_path, self.get_loops())
-            self.add_class("playing")
-            self.update_track_info_track(track_path)
-            self.set_playlist_current_icon(SYM_PLAY, self.current_track_index, self.previous_track_index)
-
-    def get_loops(self) -> int:
-        """Return how many times to loop a track, based on the repeat switch's state."""
-        return -1 if self.query_one('#repeat_checkbox', Checkbox).value else 0
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handler for button presses."""
-        if event.button.id == "play_button":
-            self.unpause()
-
-        if event.button.id == "pause_button":
             self.pause()
 
-        self.focus_playlist()
+    def select_track(self, track_path: TrackPath) -> None:
+        """Select the current track from the playlist by advancing the deque to the appropriate index."""
+        # TODO Check whether the correct track is selected.
+        if self.current_track != track_path:
+            previous_track_index = self.get_track_list_widget().get_row_index_from_row_key(self.current_track)
+            new_track_index = self.get_track_list_widget().get_row_index_from_row_key(RowKey(track_path))
+            self.advance_track(previous_track_index - new_track_index)
 
-    def on_key(self, event: events.Key) -> None:
-        """Handler for unhandled key presses."""
-        # Save a screenshot to the desktop.
-        if event.key == "s":
-            self.save_screenshot(path=path.expanduser("~/Desktop"))
+    @on(Button.Pressed, "#next_track")
+    def select_next_track(self) -> None:
+        self.set_status("Skipping...")
+        self.advance_track(-1)
 
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        """Handler for Checkbox changes."""
-        if event.checkbox.id == "random_checkbox":
-            current_track_path: TrackPath = self.get_track_path(self.current_track_index)
-            self.sort_tracks()
-            self.update_playlist_datatable()
-            self.current_track_index = self.playlist.index(current_track_path)
+    @on(Button.Pressed, "#previous_track")
+    def select_previous_track(self) -> None:
+        self.set_status("Skipping back...")
+        self.advance_track(1)
 
-        # TODO Implement repeat.
-        if event.checkbox.id == "repeat_checkbox":
-            pass
+    def open_directory(self, directory: DirEntry) -> None:
+        """Open a directory for reading audio tracks."""
+        if directory.path.is_dir():
+            self.cwd = path.expanduser(directory.path)
+        else:
+            self.set_status(f"{directory.path} is not a directory")
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Handler for selecting a row in the data table."""
-        self.current_track_index = event.cursor_row
+    def advance_track(self, by_track_count: int) -> None:
+        """Advance to the next track in the playlist."""
+        self.stop_if_paused()
+        self.playlist.rotate(by_track_count)
+        self.reset_current_track()
+        self.highlight_current_track()
 
-    def on_directory_browser_directory_selected(self, event: DirectoryBrowser.DirectorySelected) -> None:
-        """Handler for selecting a directory in the directory browser."""
-        files = get_files_in_directory(event.directory)
+        track: Track = self.get_current_track()
+        self.set_current_track_information(track.title, track.artist, track.album, track.image)
+        self.set_current_track_progress(0.0, track.duration)
 
-        if len(files) <= 0:
-            log(f"NO USABLE FILES IN DIRECTORY {event.directory}")
-            return
+    def stop_if_paused(self) -> None:
+        """Stop playback if playback is paused."""
+        if self.is_paused:
+            self.stop()
 
-        self.stop_music()
+    def highlight_current_track(self) -> bool:
+        """Highlight the current track in the track list.  Return whether this was successful."""
+        row_index: int = self.get_track_list_widget().get_row_index_from_row_key(self.current_track)
+        if row_index is not None:
+            self.get_track_list_widget().cursor_coordinate = Coordinate(row=row_index, column=0)
+            return True
+        return False
 
-        self.cwd = event.directory
-        self.refresh_tracks()
-        self.focus_playlist()
+    def update_track_information(self) -> None:
+        """Update track information."""
+        track: Track = self.get_current_track()
+        self.set_current_track_information(track.title, track.artist, track.album, track.image)
+        self.set_current_track_progress(total=track.duration)
 
-        self.previous_track_index = None
-        self.current_track_index = 0
-        self.play()
+    def monitor_track_progress(self) -> None:
+        """
+        Keep the track information in the UI up to date.
 
-    def stop_music(self) -> None:
-        """Stop the music."""
+        NOTE: We have to be careful here as a track that is not yet playing will report a time
+        of -0.01 (ms), which is also used to determine when the end of a track has played.
+        This isn't ideal, but is the only way that we can get a signal from pygame that
+        the current track has finished playing-trying to play beyond the end of the track and
+        comparing the duration is not reliable.
+        """
+        self.update_track_information()
+
+        if self.is_playing or self.is_paused:
+            progress: float = get_playback_position()
+            track: Track = self.get_current_track()
+            self.set_current_track_progress(progress=progress)
+            if progress < 0 or progress >= track.duration:
+                self.select_next_track()
+
+    def action_stop_playback(self) -> None:
+        """Respond to an action to stop playback."""
+        self.stop()
+
+    @on(Button.Pressed, "#play")
+    def play(self) -> None:
+        """Start or resume playback."""
+        track: Track = self.get_current_track()
+        self.set_status(f"[bold]|> {track.title}[/] by {track.artist}")
+        self.add_class("playing")
+        self.remove_all_playlist_icons()
+        self.set_playlist_icon(self.current_track, "|>")
+        self.highlight_current_track()
+
+        if self.is_paused:
+            self.remove_class("paused")
+            unpause_playback()
+        else:
+            play_track(self.current_track)
+
+        self.progress_timer.resume()
+
+    @on(Button.Pressed, "#pause")
+    def pause(self) -> None:
+        """Pause playback."""
+        track: Track = self.get_current_track()
+        self.set_status(f"[bold]|| {track.title}[/] by {track.artist}")
+        self.add_class("paused")
+        self.remove_all_playlist_icons()
+        self.set_playlist_icon(self.current_track, "||")
+        self.progress_timer.pause()
+
+        pause_playback()
+
+    def stop(self) -> None:
+        """Stop playback."""
+        self.set_status("Idle")
         self.remove_class("playing")
-        self.set_status("Stopped")
-        self.update_track_info(None, None, None, None)
-        self.update_progress()
-        stop_music()
+        self.remove_class("paused")
+        self.remove_all_playlist_icons()
+        self.set_current_track_progress(progress=0.0)
+        self.progress_timer.pause()
 
-    def update_progress(self) -> None:
-        """Keep track of what's happening."""
-        progress_in_s: float = 0.0
-        track_length_in_s: float = 0.0
-        progress_percentage: float = 0.0
+        stop_playback()
 
-        # Update track progress if we have a track.
-        if self.current_track_index is not None:
-            track_length_in_s, progress_in_s = self.get_track_progress()
-            progress_percentage = (progress_in_s / track_length_in_s)
+    def set_current_track_information(self, title: str, artist: str, album: str, album_artwork: Pixels | str):
+        """Update the current track information."""
+        [widget.update(f"[bold]{title}[/]") for widget in self.query("#title")]
+        [widget.update(artist) for widget in self.query("#artist")]
+        [widget.update(f"[italic]{album}[/]") for widget in self.query("#album")]
+        [widget.update(album_artwork) for widget in self.query("#album_artwork")]
 
-        # Has the track finished?
-        # pygame.mixer.music.get_pos() can return -0.01 if pygame detects
-        # that the track has finished playing.
-        if progress_in_s < 0.0 or progress_percentage >= 1.0:
-            self.advance_to_next_track()
+    def set_current_track_progress(self, progress: Optional[float] = None, total: Optional[float] = None):
+        """Update the progress bar with the current track progress."""
+        if progress is not None:
+            [widget.update(progress=progress) for widget in self.query("#progress_bar").results()]
+            [widget.update(format_duration(progress)) for widget in self.query("#track_current_time").results()]
+        if total is not None:
+            [widget.update(total=total) for widget in self.query("#progress_bar").results()]
+            [widget.update(format_duration(total)) for widget in self.query("#track_total_time").results()]
 
-        self.query_one("#progress_bar", ProgressBar).percent_complete = progress_percentage
-        self.query_one("#track_position", Static).update(format_duration(progress_in_s))
-        self.query_one("#track_length", Static).update(format_duration(track_length_in_s))
+    def remove_all_playlist_icons(self) -> None:
+        """Remove all playlist icons."""
+        self.get_track_list_widget().remove_icons()
 
-    def get_track_progress(self) -> tuple[float, float]:
-        track: Track = self.get_track(self.current_track_index)
-        track_length_in_s: float = track.duration
-        progress_in_s = get_playback_position()
+    def set_playlist_icon(self, track_path: TrackPath, icon: str = "") -> None:
+        """Set the playlist `icon` for the track at `track_path`."""
+        self.get_track_list_widget().set_icon(track_path, icon)
 
-        return track_length_in_s, progress_in_s
+    def get_track_list_widget(self) -> TrackList:
+        """Return the `TrackList` widget on the `TrackScreen` screen."""
+        return self.get_screen("tracks").query_one(TrackList)
 
-    def get_track_path(self, index: int) -> str:
-        return self.playlist[index]
+    @property
+    def is_playing(self) -> bool:
+        """Return whether the music is currently playing."""
+        return self.has_class("playing")
 
-    def get_track(self, index: int) -> Track:
-        return self.get_track_for_path(self.get_track_path(index))
+    @property
+    def is_paused(self) -> bool:
+        """Return whether the music is currently paused."""
+        return self.has_class("paused")
 
-    def get_track_for_path(self, track_path: TrackPath) -> Track:
-        return self.tracks[track_path]
+    @property
+    def is_stopped(self) -> bool:
+        """Return whether the music is currently stopped."""
+        return not self.has_class("playing")
 
-    def advance_to_next_track(self):
-        self.set_status("Next track...")
-        self.current_track_index = self.get_next_track_index()
+    def get_current_track(self) -> Track:
+        """Return the current `Track`."""
+        return self.tracks[self.current_track]
 
-    def get_playlist(self) -> DataTable:
-        """Return the playlist widget."""
-        return self.query_one("#playlist", DataTable)
-
-    def focus_playlist(self) -> None:
-        """Sets the context to the tracklist and focuses the playlist."""
-        self.set_context("tracklist")
-        self.set_focus(self.get_playlist())
-
-    def set_context(self, context: str) -> None:
-        """Sets the context for the main context panel."""
-        self.previous_context = self.query_one("#context", ContentSwitcher).current
-        self.query_one("#context", ContentSwitcher).current = context
-
-    def refresh_tracks(self) -> None:
-        """Refresh the track list and regenerate playlists."""
-        self.set_status("Refreshing playlist...")
-        self.previous_track_index = None
-        self.scan_track_directory()
-        self.create_playlist()
-        self.update_playlist_datatable()
-
-    def set_status(self, message: str, bg_color: str = "darkgreen"):
-        status = self.query_one('#status', Static)
-        status.update(message)
-        status.styles.background = bg_color
+    def set_status(self, message: str) -> None:
+        """Update the status message for all status bar widgets."""
+        [widget.update(message) for widget in self.query("#status_bar")]
 
 
 if __name__ == "__main__":
     # Add path to the dynamic libraries
     # TODO Is this actually required, or are libraries already on the path?
-    sys.path.append(PATH_DYLIBS)
+    # sys.path.append(PATH_DYLIBS)
 
     # Initialize pygame for music playback.
     init_pygame()
 
     # Run the app.
     app = MusicPlayerApp()
-    app.cwd = "./demo_music"
+    # app.cwd = "./demo_music"
     app.run()
