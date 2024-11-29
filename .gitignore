@@ -131,3 +131,6 @@ dmypy.json
 # Project
 demo_music/*
 !demo_music/.gitkeep
+
+# Pycharm
+.idea/
