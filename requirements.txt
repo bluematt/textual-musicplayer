@@ -1,7 +1,7 @@
 textual[dev]==0.24.1
-pygame==2.4.0
-tinytag==1.9.0
-rich-pixels==2.1.1
+pygame==2.6.1
+tinytag==1.10.1
+rich-pixels==2.2.0
 # Required by the above.
-rich==13.3.5
-Pillow==9.5.0
+rich==13.9.4
+pillow==10.4.0
